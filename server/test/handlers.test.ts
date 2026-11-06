@@ -186,12 +186,12 @@ describe("waiting on you", () => {
     const { deps } = mk();
     await ev(deps, { event: "working", human: true, agent: "claude", lease_ms: 60_000 });
     expect((await status(deps)).working).toBe(true);
-    await handleEvent(post("/api/event", { session_id: "coord", event: "needs_you", agent: "coordinator", reason: "question", label: "Organisely" }, "w-token"), deps);
+    await handleEvent(post("/api/event", { session_id: "coord", event: "needs_you", agent: "coordinator", reason: "question", label: "My Project" }, "w-token"), deps);
     const st = await status(deps);
     expect(st.working).toBe(false);
     expect(st.unlockReason).toBe("locked:needs_you");
     expect(st.needsYou).toBe(1);
-    expect(st.waiting).toEqual([{ agent: "coordinator", reason: "question", label: "Organisely" }]);
+    expect(st.waiting).toEqual([{ agent: "coordinator", reason: "question", label: "My Project" }]);
   });
 
   it("clears on resolved, on the human's next prompt, on a tool that then ran, and when the turn ends", async () => {

@@ -64,12 +64,12 @@ check "--agent labels the session" "$(lf agent)" codex
 
 # Waiting on you: a permission prompt locks the phone, the idle nudge after a finished turn does not.
 hook '{"session_id":"n1","hook_event_name":"UserPromptSubmit","prompt":"go"}' >/dev/null; sleep 0.5
-hook '{"session_id":"n1","hook_event_name":"Notification","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash","cwd":"/work/organisely"}' >/dev/null; sleep 0.6
+hook '{"session_id":"n1","hook_event_name":"Notification","notification_type":"permission_prompt","message":"Claude needs your permission to use Bash","cwd":"/work/my-project"}' >/dev/null; sleep 0.6
 check "permission prompt is needs_you" "$(lf event)" needs_you
 check "reason is a category" "$(lf reason)" permission
 check "no label unless opted in" "$(lf label)" -
-SCROLLLOCK_TASK_TEXT=1 hook '{"session_id":"n1","hook_event_name":"Notification","notification_type":"permission_prompt","message":"Claude needs your permission","cwd":"/work/organisely"}' >/dev/null; sleep 0.6
-check "opted in: project name as label" "$(lf label)" organisely
+SCROLLLOCK_TASK_TEXT=1 hook '{"session_id":"n1","hook_event_name":"Notification","notification_type":"permission_prompt","message":"Claude needs your permission","cwd":"/work/my-project"}' >/dev/null; sleep 0.6
+check "opted in: project name as label" "$(lf label)" my-project
 before=$(wc -l <"$work/req.jsonl")
 hook '{"session_id":"n2","hook_event_name":"Notification","notification_type":"idle_prompt","message":"Claude is waiting for your input"}' >/dev/null; sleep 0.5
 check "idle nudge sends nothing" "$(grep -c 'n2' "$work/req.jsonl" | awk '{print ($1==0)?"yes":"no"}')" yes
