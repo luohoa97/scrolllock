@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.Morph
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -86,26 +87,39 @@ fun StatusScreen(modifier: Modifier = Modifier) {
         FilledTonalButton(onClick = { scope.launch { AppGraph.state.refresh() } }) { Text("Refresh now") }
         Spacer(Modifier.height(16.dp))
         stats?.let { StatsCard(it) }
+        Spacer(Modifier.height(8.dp))
+        BlockedCard()
+    }
+}
+
+@Composable
+private fun BlockedCard() {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text("Locked while Claude isn't working", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(com.neilluo.scrolllock.service.BlockedApps.names.joinToString(", "), style = MaterialTheme.typography.bodyLarge)
     }
 }
 
 @Composable
 private fun StatsCard(s: StatsSummary) {
+    // Three equal columns, so a long label wraps inside its own column instead of running into the next.
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(20.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(vertical = 20.dp, horizontal = 8.dp),
     ) {
-        Stat("Blocked today", TimeFormat.elapsed(s.blockedTodayMs))
-        Stat("Clean streak", "${s.cleanStreakDays}d")
-        Stat("Bypasses / wk", s.bypassesThisWeek.toString())
+        Stat("Blocked today", TimeFormat.elapsed(s.blockedTodayMs), Modifier.weight(1f))
+        Stat("Clean streak", "${s.cleanStreakDays}d", Modifier.weight(1f))
+        Stat("Bypasses this week", s.bypassesThisWeek.toString(), Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun Stat(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier.padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
     }
 }
 

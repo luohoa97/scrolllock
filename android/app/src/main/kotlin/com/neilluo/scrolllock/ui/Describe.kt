@@ -7,15 +7,15 @@ import com.neilluo.scrolllock.data.TimeFormat
 /** Words for the status screen. The overlay has its own, shorter wording. */
 object Describe {
     fun headline(g: Gate) = when (g) {
-        is Gate.Open -> "Instagram is open"
+        is Gate.Open -> "Apps are unlocked"
         is Gate.Bypass -> "Bypass is on"
-        is Gate.Closed -> "Instagram is locked"
+        is Gate.Closed -> "Apps are locked"
     }
 
     fun detail(g: Gate): String = when (g) {
         is Gate.Open -> buildString {
             append(if (g.sessions == 1) "Claude is working" else "${g.sessions} Claude sessions are working")
-            append(" · ${TimeFormat.elapsed(g.remainingMs)} left on the lease")
+            append(". Locks again in ${TimeFormat.elapsed(g.remainingMs)} unless Claude keeps working.")
         }
         is Gate.Bypass -> "${TimeFormat.elapsed(g.remainingMs)} left. One bypass a day."
         is Gate.Closed -> when (g.reason) {

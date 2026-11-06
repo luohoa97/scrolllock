@@ -8,9 +8,7 @@ import android.net.Uri
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
-import android.graphics.Bitmap
 import android.os.PowerManager
-import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import com.neilluo.scrolllock.AppGraph
 import com.neilluo.scrolllock.R
@@ -31,7 +29,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 
 /**
- * Covers the blocked apps (see [BLOCKED]) whenever one is visible and the gate is closed. Window-change events from the
+ * Covers the blocked apps (see [BlockedApps]) whenever one is visible and the gate is closed. Window-change events from the
  * system wake the service; each wake lists the windows on screen and finds a blocked app's. Which
  * screen of the app it is does not matter: a visible window of a blocked app gets the overlay, sized to
  * that window only (so split screen leaves the other app alone).
@@ -59,7 +57,6 @@ class BlockerService : AccessibilityService(), OverlayActions {
     private var frontJobs: Job? = null
     private val nudges = Channel<Unit>(Channel.CONFLATED)
     private var screenReceiver: BroadcastReceiver? = null
-    private var capturing = false
     private var weMuted = false
 
     override fun onServiceConnected() {
@@ -72,13 +69,23 @@ class BlockerService : AccessibilityService(), OverlayActions {
         engine = DetectionEngine(rules)
         scope.launch { AppGraph.settings.flow.collect { s -> cfg = s } }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected")
+        log("service connected, build 0.1.10")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
+            var settle = 0
             while (true) {
                 runCatching { pollOnce() }.onFailure { android.util.Log.e("ScrollLock", "poll failed", it) }
                 // Event-driven when a blocked app is off screen. Heartbeat only while one is on screen.
-                if (igVisible) withTimeoutOrNull(HEARTBEAT_MS) { nudges.receive() } else nudges.receive()
+                // Right after an event, look again a few times as things settle: an app that is still
+                // launching can have a window with no readable content yet, and no further event may
+                // come until the user touches it.
+                val wait: Long? = when {
+                    igVisible -> HEARTBEAT_MS
+                    settle < SETTLE_MS.size -> SETTLE_MS[settle++]
+                    else -> null
+                }
+                val nudged = if (wait != null) withTimeoutOrNull(wait) { nudges.receive() } else nudges.receive()
+                if (nudged != null) settle = 0
             }
         }
         runCatching { restoreStaleMute() }
@@ -131,7 +138,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             val root = runCatching { w.root }.getOrNull() ?: continue
             try {
                 val pkg = root.packageName?.toString()
-                if (pkg == null || pkg !in BLOCKED) continue
+                if (pkg == null || pkg !in BlockedApps.packages) continue
                 w.getBoundsInScreen(r)
                 if (r.width() <= 0 || r.height() <= 0) continue
                 if (best == null || r.width() * r.height() > best.width() * best.height()) { best = Rect(r); bestPkg = pkg }
@@ -139,13 +146,13 @@ class BlockerService : AccessibilityService(), OverlayActions {
                 @Suppress("DEPRECATION") root.recycle()
             }
         }
-        if (best == null && list.isEmpty()) {
-            // The system gave no window list (flag not applied yet): fall back to the active window.
+        if (best == null) {
+            // No blocked window had readable content (still launching, or no window list): try the active window.
             val root = rootInActiveWindow
             if (root != null) {
                 try {
                     val pkg = root.packageName?.toString()
-                    if (pkg != null && pkg in BLOCKED) {
+                    if (pkg != null && pkg in BlockedApps.packages) {
                         val b = Rect(); root.getBoundsInScreen(b)
                         if (b.width() > 0 && b.height() > 0) { best = b; bestPkg = pkg }
                     }
@@ -212,7 +219,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
         if (at == 0L || !igVisible || android.os.SystemClock.elapsedRealtime() < at) return
         val root = rootInActiveWindow ?: return
         try {
-            if (root.packageName?.toString() !in BLOCKED) return
+            if (root.packageName?.toString() !in BlockedApps.packages) return
             AppGraph.captureAt = 0L
             val screen = windowManager().currentWindowMetrics.bounds
             val tree = TreeReader.read(root, Box(0, 0, screen.width(), screen.height()))
@@ -235,7 +242,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
     }
 
     private fun model(g: Gate.Closed) = OverlayModel(
-        title = getString(R.string.overlay_title, BLOCKED[blockedPkg] ?: "App"),
+        title = getString(R.string.overlay_title, BlockedApps.packages[blockedPkg] ?: "App"),
         subtitle = getString(
             when (g.reason) {
                 ClosedReason.RelayUnreachable -> R.string.overlay_relay_down
@@ -251,44 +258,14 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     private var focusRequest: android.media.AudioFocusRequest? = null
 
-    /**
-     * Shows or updates the overlay. A new overlay waits for a screenshot first (taken before the
-     * overlay exists, so it holds Instagram and not the overlay), which the overlay blurs itself.
-     * If the screenshot fails or is slow, the overlay goes up anyway with the system blur or an
-     * opaque scrim. Instagram is never left uncovered for more than [CAPTURE_TIMEOUT_MS].
-     */
+    /** Shows or updates the overlay at once. Blurred if the system allows, a near-opaque scrim if not. */
     private fun showOverlay(b: Box, m: OverlayModel) {
-        if (overlay.isShowing) { overlay.show(b, m); return }
-        if (capturing) return
-        capturing = true
-        var done = false
-        fun finish(shot: Bitmap?) {
-            if (done) return
-            done = true
-            capturing = false
-            val gate = AppGraph.state.gateNow(cfg)
-            if (!igVisible || gate !is Gate.Closed) return
-            if (shownAt == null) {
-                shownAt = android.os.SystemClock.elapsedRealtime()
-                takeAudioFocus()
-                log("overlay up (snapshot=${shot != null})")
-            }
-            overlay.show(bounds, model(gate), shot)
+        if (shownAt == null) {
+            shownAt = android.os.SystemClock.elapsedRealtime()
+            takeAudioFocus()
+            log("overlay up (blur=${getSystemService(android.view.WindowManager::class.java).isCrossWindowBlurEnabled})")
         }
-        val started = runCatching {
-            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
-                override fun onSuccess(result: ScreenshotResult) {
-                    val bmp = runCatching {
-                        Bitmap.wrapHardwareBuffer(result.hardwareBuffer, result.colorSpace)
-                    }.getOrNull()
-                    runCatching { result.hardwareBuffer.close() }
-                    finish(bmp)
-                }
-                override fun onFailure(errorCode: Int) { log("screenshot failed ($errorCode)"); finish(null) }
-            })
-        }.isSuccess
-        if (!started) finish(null)
-        else scope.launch { delay(CAPTURE_TIMEOUT_MS); finish(null) }
+        overlay.show(b, m)
     }
 
     private fun unmuteMedia() {
@@ -374,23 +351,9 @@ class BlockerService : AccessibilityService(), OverlayActions {
     }
 
     private companion object {
-        /**
-         * Apps that are blocked whole while Claude isn't working: every app with reels or short
-         * video. Package -> name for the lock screen. Discord is left out on purpose (work tool).
-         * Check these against the phone: adb shell pm list packages | grep -E 'instagram|youtube|musically|trill|snapchat|facebook'
-         */
-        val BLOCKED = mapOf(
-            "com.instagram.android" to "Instagram",
-            "com.instagram.lite" to "Instagram",
-            "com.google.android.youtube" to "YouTube",
-            "com.zhiliaoapp.musically" to "TikTok",
-            "com.ss.android.ugc.trill" to "TikTok",
-            "com.snapchat.android" to "Snapchat",
-            "com.facebook.katana" to "Facebook",
-            "com.facebook.lite" to "Facebook",
-        )
         const val CLAUDE_PACKAGE = "com.anthropic.claude"
         const val HEARTBEAT_MS = 1_000L
+        val SETTLE_MS = longArrayOf(100, 250, 500, 1_000, 2_000, 4_000)
         const val CAPTURE_TIMEOUT_MS = 700L
         const val GUARD_DELAY_MS = 350L
         const val SAFETY_FETCH_MS = 30_000L

@@ -2,11 +2,7 @@ package com.neilluo.scrolllock.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.res.Configuration
-import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.Matrix
-import android.graphics.RenderEffect
-import android.graphics.Shader
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -16,7 +12,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.neilluo.scrolllock.R
@@ -52,8 +47,6 @@ class OverlayController(
     private var elapsedView: TextView? = null
     private var bypassView: TextView? = null
     private var builtWithBlur = false
-    private var snapshot: Bitmap? = null
-    private var snapshotView: ImageView? = null
 
     val isShowing: Boolean get() = root != null
 
@@ -61,13 +54,12 @@ class OverlayController(
         get() = (service.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
     /**
-     * [shot] is a screenshot of the display taken just before the overlay goes up. It is blurred by
-     * the overlay's own view, which works whether or not the system allows window blur. Without a
-     * shot the overlay falls back to the system's window blur, then to an opaque scrim.
+     * Live blur from the compositor (FLAG_BLUR_BEHIND) when the system allows it. When it doesn't
+     * (battery saver, a vendor power mode, the "disable window blurs" developer option, tunneled
+     * video) the overlay is a near-opaque scrim instead, so the app is never left showing.
      */
-    fun show(bounds: Box, model: OverlayModel, shot: Bitmap? = null) {
-        if (shot != null) snapshot = shot
-        val blur = wm.isCrossWindowBlurEnabled && snapshot == null
+    fun show(bounds: Box, model: OverlayModel) {
+        val blur = wm.isCrossWindowBlurEnabled
         if (root != null) {
             // Blur support can flip while we're up (battery saver, a developer option, thermal limits).
             // The window flags and scrim are fixed when the window is made, so rebuild if it changed.
@@ -94,7 +86,7 @@ class OverlayController(
             if (blur) blurBehindRadius = BLUR_RADIUS
             title = "ScrollLock"
         }
-        val view = build(model, blur, bounds)
+        val view = build(model, blur)
         view.alpha = 0f
         try {
             wm.addView(view, lp)
@@ -115,7 +107,6 @@ class OverlayController(
         val h = bounds.height.coerceAtLeast(1)
         if (lp.width != w || lp.height != h || lp.x != bounds.left || lp.y != bounds.top) {
             lp.width = w; lp.height = h; lp.x = bounds.left; lp.y = bounds.top
-            placeSnapshot(bounds)
             try { wm.updateViewLayout(view, lp) } catch (_: Exception) {}
         }
     }
@@ -123,7 +114,7 @@ class OverlayController(
     private fun removeNow() {
         val view = root ?: return
         root = null; params = null
-        titleView = null; subtitleView = null; elapsedView = null; bypassView = null; snapshotView = null
+        titleView = null; subtitleView = null; elapsedView = null; bypassView = null
         view.animate().cancel()
         try { wm.removeViewImmediate(view) } catch (_: Exception) {}
     }
@@ -132,8 +123,7 @@ class OverlayController(
         val view = root ?: return
         root = null
         params = null
-        titleView = null; subtitleView = null; elapsedView = null; bypassView = null; snapshotView = null
-        snapshot = null
+        titleView = null; subtitleView = null; elapsedView = null; bypassView = null
         view.animate().cancel()
         view.animate().alpha(0f).setDuration(FADE_MS).withEndAction {
             try { wm.removeViewImmediate(view) } catch (_: Exception) {}
@@ -150,20 +140,12 @@ class OverlayController(
         bypassView?.visibility = if (model.bypassAvailable) View.VISIBLE else View.GONE
     }
 
-    /** Shifts the full-display screenshot so the part under this window lines up with it. */
-    private fun placeSnapshot(bounds: Box) {
-        val iv = snapshotView ?: return
-        iv.imageMatrix = Matrix().apply { setTranslate(-bounds.left.toFloat(), -bounds.top.toFloat()) }
-    }
-
-    private fun build(model: OverlayModel, blur: Boolean, bounds: Box): FrameLayout {
+    private fun build(model: OverlayModel, blur: Boolean): FrameLayout {
         val fg = if (night) Color.WHITE else Color.parseColor("#111111")
         val muted = if (night) Color.parseColor("#B3FFFFFF") else Color.parseColor("#99000000")
-        val shot = snapshot
-        val soft = blur || shot != null // content behind is already blurred, so the scrim can be light
         val scrim = when {
-            soft && night -> Color.parseColor("#990B0B0B")
-            soft -> Color.parseColor("#99FFFFFF")
+            blur && night -> Color.parseColor("#990B0B0B")
+            blur -> Color.parseColor("#99FFFFFF")
             night -> Color.parseColor("#F20B0B0B")
             else -> Color.parseColor("#F2FFFFFF")
         }
@@ -200,18 +182,6 @@ class OverlayController(
         return FrameLayout(service).apply {
             setBackgroundColor(scrim)
             isClickable = true // swallow touches so nothing reaches the Reel underneath
-            if (shot != null) {
-                // The blur is done by this view, not by the window manager, so it can't be switched
-                // off by battery saver or a vendor power mode.
-                val iv = ImageView(service).apply {
-                    scaleType = ImageView.ScaleType.MATRIX
-                    setImageBitmap(shot)
-                    setRenderEffect(RenderEffect.createBlurEffect(SNAPSHOT_BLUR, SNAPSHOT_BLUR, Shader.TileMode.CLAMP))
-                }
-                snapshotView = iv
-                placeSnapshot(bounds)
-                addView(iv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            }
             addView(column, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         }
     }
@@ -254,6 +224,5 @@ class OverlayController(
     private companion object {
         const val FADE_MS = 140L
         const val BLUR_RADIUS = 40
-        const val SNAPSHOT_BLUR = 48f
     }
 }

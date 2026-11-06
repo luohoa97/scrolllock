@@ -100,8 +100,8 @@ private fun AccessibilityStep(next: () -> Unit) {
     }
     Text("Turn on the accessibility service", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
     Text(
-        "ScrollLock reads the structure of Instagram's screen to tell Reels from messages. It never reads message " +
-            "text, and it only looks while Instagram is open.",
+        "ScrollLock uses it to see when Instagram, YouTube, TikTok, Snapchat or Facebook is on screen and cover it " +
+            "while Claude isn't working. It never reads message text.",
     )
     Text(
         "Sideloaded apps start with this switch greyed out. If it is: open App info, tap the three dots, choose " +
@@ -132,7 +132,7 @@ private fun DoneStep() {
     val scope = rememberCoroutineScope()
     Text("You're set", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
     Text(
-        "Open Instagram and go to Reels while Claude is idle: you should see the lock screen. Start a Claude Code " +
+        "Open Instagram while Claude is idle: you should see the lock screen. Start a Claude Code " +
             "task and it should open within a couple of seconds.",
     )
     if (!AppGraph.fcm.firebaseAvailable()) {

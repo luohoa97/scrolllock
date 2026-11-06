@@ -79,7 +79,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Section("While locked") {
             Text(
-                "All of Instagram is blocked, messages included. It is blurred, muted and can't be used.",
+                "Instagram, YouTube, TikTok, Snapchat and Facebook are blocked whole while Claude isn't working. Discord is left alone.",
                 style = MaterialTheme.typography.bodyMedium,
             )
             val gate by AppGraph.state.gate.collectAsStateWithLifecycle()
@@ -102,10 +102,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Section("Lockdown") { LockdownSection(s) }
 
-        Section("Debug", note = "If Reels or Explore stop being blocked after an Instagram update, tap this, open the screen that slipped through, and paste the copied dump into an issue. Message text is never included.") {
+        Section("Debug", note = "For bug reports: tap this, open the app screen you mean, and paste the copied dump into an issue. Message text is never included.") {
             OutlinedButton(onClick = {
                 AppGraph.captureAt = android.os.SystemClock.elapsedRealtime() + 5_000
-            }) { Text("Capture next Instagram screen in 5s") }
+            }) { Text("Capture next app screen in 5s") }
         }
     }
 }
