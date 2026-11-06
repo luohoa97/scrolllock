@@ -63,16 +63,22 @@ class OverlayController(
     }
 
     /**
-     * Puts the window up again from scratch, with no fade. Blur is applied by the compositor against whatever is
-     * behind the window when it's added, and right after a blocked app is launched from nothing that can be a
-     * starting window that isn't blurred; re-adding once the app has drawn gets a real blur.
+     * Makes the compositor re-sample what is behind the window, without taking the window down (re-adding it
+     * flashes the app for a frame). The blur is only computed against whatever was drawn when the window was
+     * added, so an app that was still launching, or restoring from recents, can leave it blurring nothing.
+     * Changing the radius forces a fresh sample; the second step goes a frame later so the change registers.
      */
-    fun rebuild() {
-        val b = lastBounds ?: return
-        val m = lastModel ?: return
-        if (root == null) return
-        removeNow()
-        show(b, m, animate = false)
+    fun refreshBlur() {
+        val view = root ?: return
+        val lp = params ?: return
+        if (!builtWithBlur) return
+        lp.blurBehindRadius = BLUR_RADIUS - 1
+        try { wm.updateViewLayout(view, lp) } catch (_: Exception) { return }
+        view.post {
+            if (root !== view) return@post
+            lp.blurBehindRadius = BLUR_RADIUS
+            try { wm.updateViewLayout(view, lp) } catch (_: Exception) {}
+        }
     }
 
     val isShowing: Boolean get() = root != null
@@ -126,6 +132,7 @@ class OverlayController(
         builtWithBlur = blur
         android.util.Log.i("ScrollLock", "overlay window added blur=$blur bounds=${bounds.width}x${bounds.height} animate=$animate")
         if (animate) view.animate().alpha(1f).setDuration(FADE_MS).start()
+        if (blur) for (wait in BLUR_REFRESH_MS) view.postDelayed({ if (root === view) refreshBlur() }, wait)
     }
 
     private fun update(bounds: Box, model: OverlayModel) {
@@ -145,6 +152,7 @@ class OverlayController(
         root = null; params = null
         titleView = null; subtitleView = null; elapsedView = null; bypassView = null
         view.animate().cancel()
+        android.util.Log.i("ScrollLock", "overlay window removed (rebuild for blur change)")
         try { wm.removeViewImmediate(view) } catch (_: Exception) {}
     }
 
@@ -155,6 +163,7 @@ class OverlayController(
         params = null
         titleView = null; subtitleView = null; elapsedView = null; bypassView = null
         view.animate().cancel()
+        android.util.Log.i("ScrollLock", "overlay window hiding")
         view.animate().alpha(0f).setDuration(FADE_MS).withEndAction {
             try { wm.removeViewImmediate(view) } catch (_: Exception) {}
         }.start()
@@ -254,5 +263,6 @@ class OverlayController(
     private companion object {
         const val FADE_MS = 140L
         const val BLUR_RADIUS = 40
+        val BLUR_REFRESH_MS = longArrayOf(120, 400, 1_000)
     }
 }
