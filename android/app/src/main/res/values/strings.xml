@@ -7,4 +7,11 @@
     <string name="widget_description">Shows whether Instagram is locked.</string>
     <string name="admin_description">Lockdown: stops ScrollLock being uninstalled without the 24 hour wait.</string>
     <string name="admin_disable_warning">Turning this off lets you uninstall ScrollLock. Use Request unlock in the app so the 24 hour wait applies.</string>
+    <string name="overlay_title">Instagram locked</string>
+    <string name="overlay_claude_idle">Claude isn\'t working</string>
+    <string name="overlay_relay_down">Can\'t reach Claude\'s status</string>
+    <string name="overlay_no_setup">Setup isn\'t finished</string>
+    <string name="overlay_back_to_claude">Back to Claude</string>
+    <string name="overlay_bypass">Bypass 5 min</string>
+    <string name="overlay_back">Back</string>
 </resources>
