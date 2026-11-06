@@ -46,6 +46,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             kotlinx.coroutines.CoroutineExceptionHandler { _, e -> android.util.Log.e("ScrollLock", "coroutine failed", e) },
     )
     private lateinit var overlay: OverlayController
+    private lateinit var notifier: StatusNotifier
     private lateinit var engine: DetectionEngine
     private var cfg = Settings()
     private var rules = com.neilluo.scrolllock.detect.Rules()
@@ -65,11 +66,12 @@ class BlockerService : AccessibilityService(), OverlayActions {
         // whose service config the system hasn't re-read.
         serviceInfo = serviceInfo?.apply { flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
         overlay = OverlayController(this, this)
+        notifier = StatusNotifier(this)
         rules = RulesLoader.load(this)
         engine = DetectionEngine(rules)
         scope.launch { AppGraph.settings.flow.collect { s -> cfg = s } }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected, build 0.1.11")
+        log("service connected, build 0.1.12")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             var settle = 0
@@ -245,10 +247,23 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     /** One place decides whether the overlay is up: Instagram visible and the gate closed. */
     private fun apply() {
-        if (!igVisible) { hideOverlay(); return }
+        if (!igVisible) { hideOverlay(); notifier.clear(); return }
         val gate = AppGraph.state.gateNow(cfg)
+        announce(gate)
         if (gate !is Gate.Closed) { hideOverlay(); return }
         showOverlay(bounds, model(gate))
+    }
+
+    /** Says where you are in the notification / island: which app, and when it locks. */
+    private fun announce(g: Gate) {
+        val app = BlockedApps.packages[blockedPkg] ?: "App"
+        val wall = System.currentTimeMillis()
+        when (g) {
+            is Gate.Open -> notifier.show("In $app", "Claude is working · locks in", wall + g.remainingMs)
+            is Gate.Bypass -> notifier.show("In $app", "Bypass on · ends in", wall + g.remainingMs)
+            is Gate.Closed -> if (g.reason == ClosedReason.Checking) notifier.show("In $app", "Checking Claude…", null)
+                else notifier.show("$app locked", "Claude isn't working", null, chip = "Locked")
+        }
     }
 
     private fun model(g: Gate.Closed) = OverlayModel(
@@ -257,6 +272,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             when (g.reason) {
                 ClosedReason.RelayUnreachable -> R.string.overlay_relay_down
                 ClosedReason.NoSetup -> R.string.overlay_no_setup
+                ClosedReason.Checking -> R.string.overlay_checking
                 else -> R.string.overlay_claude_idle
             },
         ),
@@ -354,6 +370,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     override fun onDestroy() {
         hideOverlay()
+        notifier.clear()
         unmuteMedia()
         screenReceiver?.let { runCatching { unregisterReceiver(it) } }
         scope.cancel()

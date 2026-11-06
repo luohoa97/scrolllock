@@ -53,7 +53,8 @@ class GateLogicTest {
     }
 
     @Test fun neverReachedTheRelay() {
-        assertEquals(ClosedReason.RelayUnreachable, (gate(null, 0) as Gate.Closed).reason)
+        assertEquals(ClosedReason.Checking, (gate(null, 0) as Gate.Closed).reason)
+        assertEquals(ClosedReason.RelayUnreachable, (gate(null, 0, failed = true) as Gate.Closed).reason)
     }
 
     @Test fun notConfiguredIsItsOwnReason() {

@@ -11,6 +11,7 @@
     <string name="overlay_title">%1$s locked</string>
     <string name="overlay_claude_idle">Claude isn\'t working</string>
     <string name="overlay_relay_down">Can\'t reach Claude\'s status</string>
+    <string name="overlay_checking">Checking if Claude is working…</string>
     <string name="overlay_no_setup">Setup isn\'t finished</string>
     <string name="overlay_back_to_claude">Back to Claude</string>
 </resources>
