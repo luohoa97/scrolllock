@@ -107,7 +107,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
         frontJobs?.cancel()
         frontJobs = null
         verdict = Verdict.Undecided
-        overlay.hide()
+        hideOverlay()
     }
 
     /** Lockdown: if this Settings screen could remove ScrollLock, send the user home. */
@@ -131,6 +131,13 @@ class BlockerService : AccessibilityService(), OverlayActions {
     }
 
     private fun scheduleEvaluate() {
+        if (AppGraph.captureAt != 0L) {
+            scope.launch {
+                val wait = AppGraph.captureAt - android.os.SystemClock.elapsedRealtime()
+                if (wait > 0) delay(wait + 50)
+                if (AppGraph.captureAt != 0L && tracker.targetInFront) evaluate()
+            }
+        }
         if (evalPending) return
         evalPending = true
         scope.launch {
@@ -147,7 +154,9 @@ class BlockerService : AccessibilityService(), OverlayActions {
             if (root.packageName?.toString() != INSTAGRAM) return
             val screen = windowManager().currentWindowMetrics.bounds
             val tree = TreeReader.read(root, Box(0, 0, screen.width(), screen.height()))
-            verdict = policy.feed(engine.detect(tree))
+            val surface = engine.detect(tree)
+            verdict = policy.feed(surface)
+            maybeCapture(tree, surface)
             val r = android.graphics.Rect()
             root.getBoundsInScreen(r)
             if (r.width() > 0 && r.height() > 0) bounds = Box(r.left, r.top, r.right, r.bottom)
@@ -157,14 +166,25 @@ class BlockerService : AccessibilityService(), OverlayActions {
         apply()
     }
 
+    /** Debug: after "Capture in 5s" in Settings, copy a redacted dump of the next Instagram screen. */
+    private fun maybeCapture(tree: com.neilluo.scrolllock.detect.TreeSnapshot, surface: Surface) {
+        val at = AppGraph.captureAt
+        if (at == 0L || android.os.SystemClock.elapsedRealtime() < at) return
+        AppGraph.captureAt = 0L
+        val text = com.neilluo.scrolllock.detect.TreeDump.toJson(tree, surface, engine.explain(tree))
+        getSystemService(android.content.ClipboardManager::class.java)
+            .setPrimaryClip(android.content.ClipData.newPlainText("ScrollLock screen dump", text))
+        android.widget.Toast.makeText(this, "Screen dump copied (${tree.nodes.size} nodes, $surface)", android.widget.Toast.LENGTH_LONG).show()
+    }
+
     /** One place decides whether the overlay is up. Undecided leaves things as they are. */
     private fun apply() {
-        if (!tracker.targetInFront) { overlay.hide(); return }
+        if (!tracker.targetInFront) { hideOverlay(); return }
         val gate = AppGraph.state.gateNow(cfg)
-        if (gate !is Gate.Closed) { overlay.hide(); return }
+        if (gate !is Gate.Closed) { hideOverlay(); return }
         when (verdict) {
-            Verdict.Allow -> overlay.hide()
-            Verdict.Block -> overlay.show(bounds.takeIf { it.area > 0 } ?: fullScreen(), model(gate))
+            Verdict.Allow -> hideOverlay()
+            Verdict.Block -> showOverlay(bounds.takeIf { it.area > 0 } ?: fullScreen(), model(gate))
             Verdict.Undecided -> Unit
         }
     }
@@ -181,6 +201,23 @@ class BlockerService : AccessibilityService(), OverlayActions {
         elapsed = g.elapsedMs?.let { TimeFormat.elapsed(it) }.orEmpty(),
         bypassAvailable = bypassOk,
     )
+
+    private var shownAt: Long? = null
+
+    private fun showOverlay(b: Box, m: OverlayModel) {
+        if (shownAt == null) shownAt = android.os.SystemClock.elapsedRealtime()
+        overlay.show(b, m)
+    }
+
+    /** Hides the overlay and books the time it was up as blocked time. */
+    private fun hideOverlay() {
+        shownAt?.let { start ->
+            shownAt = null
+            val blockedMs = android.os.SystemClock.elapsedRealtime() - start
+            AppGraph.scope.launch { AppGraph.stats.addBlocked(blockedMs) }
+        }
+        overlay.hide()
+    }
 
     private fun blockedSurfaces(s: Settings): Set<Surface> = buildSet {
         if (s.blockReels) add(Surface.Reels)
@@ -224,7 +261,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
-        overlay.hide()
+        hideOverlay()
         scope.cancel()
         super.onDestroy()
     }

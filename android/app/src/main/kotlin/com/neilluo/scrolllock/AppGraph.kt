@@ -27,4 +27,7 @@ object AppGraph {
     val fcm: PushRegistrar by lazy { PushRegistrar(app, settings, relay) }
     val state: StateRepository by lazy { StateRepository(app, settings, stats, relay, scope) }
     val lockdown: Lockdown by lazy { Lockdown(app, settings, state) }
+
+    /** Elapsed-realtime moment at which the service should dump the next Instagram screen, or 0. */
+    @Volatile var captureAt: Long = 0L
 }
