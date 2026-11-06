@@ -131,7 +131,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
             val who = AppGraph.state.waitersNow(settings?.showTaskText == true)
             WaitingCard(if (local.isEmpty() && snap == null) emptyList() else who)
         }
-        for (g in gaps) GapCard(g) { ctx.startActivity(intentFor(ctx, g.need).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        for (g in gaps) GapCard(g) { ctx.startSettings(intentFor(ctx, g.need).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
         stats?.let { StatsCard(it) }
         Spacer(Modifier.height(8.dp))
         BlockedCard()

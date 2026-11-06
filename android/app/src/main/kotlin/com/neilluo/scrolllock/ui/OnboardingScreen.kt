@@ -110,9 +110,9 @@ private fun AccessibilityStep(next: () -> Unit) {
     )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = {
-            ctx.startActivity(Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}")))
+            ctx.startSettings(Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}")))
         }) { Text("App info") }
-        Button(onClick = { ctx.startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("Accessibility settings") }
+        Button(onClick = { ctx.startSettings(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS)) }) { Text("Accessibility settings") }
     }
     Text(if (enabled) "On. Nice." else "Not on yet.", fontWeight = FontWeight.SemiBold)
     if (enabled) Button(onClick = next) { Text("Next") }
@@ -123,7 +123,7 @@ private fun BatteryStep(next: () -> Unit) {
     val ctx = LocalContext.current
     Text("Let it run in the background", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
     Text("Battery optimisation can delay the push that unlocks Instagram. Exempting ScrollLock keeps unlocks fast.")
-    OutlinedButton(onClick = { ctx.startActivity(AppGraph.lockdown.batteryIntent()) }) { Text("Allow background running") }
+    OutlinedButton(onClick = { ctx.startSettings(AppGraph.lockdown.batteryIntent()) }) { Text("Allow background running") }
     Row { Button(onClick = next) { Text("Next") }; TextButton(onClick = next) { Text("Skip") } }
 }
 

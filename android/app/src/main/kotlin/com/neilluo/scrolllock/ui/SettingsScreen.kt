@@ -104,10 +104,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             val ctx = androidx.compose.ui.platform.LocalContext.current
             if (android.os.Build.VERSION.SDK_INT >= 36) {
                 OutlinedButton(onClick = {
-                    ctx.startActivity(
+                    ctx.startSettings(
                         android.content.Intent("android.settings.MANAGE_APP_PROMOTED_NOTIFICATIONS")
                             .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                        // Some phone makers have no Live Updates screen; their notification page for the app is the next best.
+                        android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName),
                     )
                 }) { Text("Live updates settings") }
                 Text(
@@ -125,7 +128,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.bodyMedium,
             )
             OutlinedButton(onClick = {
-                ctx.startActivity(
+                ctx.startSettings(
                     android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                 )
@@ -171,7 +174,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = {
-                    ctx.startActivity(
+                    ctx.startSettings(
                         android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${ctx.packageName}"))
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
@@ -183,7 +186,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                             ctx.startActivity(android.content.Intent().setClassName(pkg, cls).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                         }.isSuccess
                     }
-                    if (!opened) ctx.startActivity(
+                    if (!opened) ctx.startSettings(
                         android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${ctx.packageName}"))
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
@@ -270,7 +273,7 @@ private fun LockdownSection(s: Settings) {
     if (!s.lockdown) {
         Button(onClick = {
             scope.launch {
-                if (!lock.isAdminActive()) ctx.startActivity(lock.addAdminIntent())
+                if (!lock.isAdminActive()) ctx.startSettings(lock.addAdminIntent())
                 lock.enable()
             }
         }) { Text("Turn on Lockdown") }
@@ -278,10 +281,10 @@ private fun LockdownSection(s: Settings) {
     }
     Text("Lockdown is on" + if (lock.isAdminActive()) "" else " (device admin not active yet)", fontWeight = FontWeight.SemiBold)
     if (!lock.isAdminActive()) {
-        OutlinedButton(onClick = { ctx.startActivity(lock.addAdminIntent()) }) { Text("Activate device admin") }
+        OutlinedButton(onClick = { ctx.startSettings(lock.addAdminIntent()) }) { Text("Activate device admin") }
     }
     if (!lock.batteryExempt()) {
-        OutlinedButton(onClick = { ctx.startActivity(lock.batteryIntent()) }) { Text("Allow background running") }
+        OutlinedButton(onClick = { ctx.startSettings(lock.batteryIntent()) }) { Text("Allow background running") }
     }
     when {
         s.unlockRequest == null -> OutlinedButton(onClick = { scope.launch { lock.requestUnlock() } }) { Text("Request unlock") }
@@ -375,7 +378,7 @@ private fun PermissionsRows() {
                 Text(name, style = MaterialTheme.typography.titleSmall)
                 Text(state, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            OutlinedButton(onClick = { ctx.startActivity(intentFor(ctx, need).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }) {
+            OutlinedButton(onClick = { ctx.startSettings(intentFor(ctx, need).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }) {
                 Text(if (on[need] == true) "Open" else "Turn on")
             }
         }
