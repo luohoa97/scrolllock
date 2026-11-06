@@ -13,8 +13,27 @@ class ScreenPolicyTest {
     }
 
     @Test fun allowsHomeDmAndProfile() {
+        for (s in listOf(Surface.Home, Surface.Dm, Surface.Profile)) {
+            val p = ScreenPolicy()
+            p.feed(s)
+            assertEquals(Verdict.Allow, p.feed(s))
+        }
+    }
+
+    @Test fun oneStrayAllowedResultDoesNotLiftABlock() {
         val p = ScreenPolicy()
-        for (s in listOf(Surface.Home, Surface.Dm, Surface.Profile)) assertEquals(Verdict.Allow, p.feed(s))
+        assertEquals(Verdict.Block, p.feed(Surface.Reels))
+        assertEquals(Verdict.Undecided, p.feed(Surface.Dm))
+        assertEquals(Verdict.Block, p.feed(Surface.Reels))
+        assertEquals(Verdict.Undecided, p.feed(Surface.Dm))
+        assertEquals(Verdict.Allow, p.feed(Surface.Dm))
+    }
+
+    @Test fun anUnknownInTheMiddleRestartsTheAllowRun() {
+        val p = ScreenPolicy()
+        p.feed(Surface.Home)
+        p.feed(Surface.Unknown)
+        assertEquals(Verdict.Undecided, p.feed(Surface.Home))
     }
 
     @Test fun unknownIsUndecidedUntilTheLimitThenFailsClosed() {
@@ -29,12 +48,14 @@ class ScreenPolicyTest {
     @Test fun anAllowedScreenResetsTheUnknownRun() {
         val p = ScreenPolicy(unknownLimit = 2)
         p.feed(Surface.Unknown)
+        p.feed(Surface.Dm)
         assertEquals(Verdict.Allow, p.feed(Surface.Dm))
         assertEquals(Verdict.Undecided, p.feed(Surface.Unknown))
     }
 
     @Test fun blockedSetIsConfigurable() {
         val p = ScreenPolicy(blocked = setOf(Surface.Reels))
+        p.feed(Surface.Explore)
         assertEquals(Verdict.Allow, p.feed(Surface.Explore))
     }
 }

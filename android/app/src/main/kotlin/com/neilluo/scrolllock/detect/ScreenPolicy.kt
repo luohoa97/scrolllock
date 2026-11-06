@@ -11,18 +11,28 @@ enum class Verdict { Allow, Block, Undecided }
 class ScreenPolicy(
     private val blocked: Set<Surface> = setOf(Surface.Reels, Surface.Explore),
     private val unknownLimit: Int = 4,
+    /** Consecutive allowed results needed before the overlay may come down. Stops flicker. */
+    private val allowConfirm: Int = 2,
 ) {
     private var unknownRun = 0
+    private var allowRun = 0
 
-    fun reset() { unknownRun = 0 }
+    fun reset() { unknownRun = 0; allowRun = 0 }
 
     fun feed(surface: Surface): Verdict {
         if (surface == Surface.Unknown) {
+            allowRun = 0
             unknownRun++
             return if (unknownRun >= unknownLimit) Verdict.Block else Verdict.Undecided
         }
         unknownRun = 0
-        return if (surface in blocked) Verdict.Block else Verdict.Allow
+        if (surface in blocked) {
+            allowRun = 0
+            return Verdict.Block
+        }
+        // Blocking is instant, unblocking has to be sure: one stray match must not drop the overlay.
+        allowRun++
+        return if (allowRun >= allowConfirm) Verdict.Allow else Verdict.Undecided
     }
 
     /** True when the last result was a block caused by not recognising the screen. */

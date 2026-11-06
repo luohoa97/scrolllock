@@ -45,6 +45,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
     private var bypassOk = false
     private var evalPending = false
     private var frontJobs: Job? = null
+    private var frontSince = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -85,18 +86,30 @@ class BlockerService : AccessibilityService(), OverlayActions {
     private fun onInstagramFront() {
         policy.reset()
         verdict = Verdict.Undecided
+        frontSince = android.os.SystemClock.elapsedRealtime()
         frontJobs?.cancel()
         frontJobs = scope.launch {
             launch { AppGraph.state.refresh() }
             launch { bypassOk = AppGraph.state.canBypass() }
             // The gate only needs a clock tick while Instagram is on screen.
-            launch { AppGraph.state.gate.collect { apply() } }
-            // Safety net: if no push has arrived for two minutes, ask the relay directly.
             launch {
+                AppGraph.state.gate.collect {
+                    apply()
+                    // Don't rely on accessibility events alone: a returning app, a paused video or a
+                    // null root can mean none arrive. While locked, look again every tick.
+                    if (it is Gate.Closed) scheduleEvaluate()
+                }
+            }
+            // Safety net: if no push has arrived for two minutes, ask the relay directly. Without
+            // Firebase there are no pushes at all, so while Instagram is up and locked, ask every
+            // few seconds so an unlock lands without pressing refresh.
+            launch {
+                val pushless = !AppGraph.fcm.firebaseAvailable()
                 while (true) {
-                    delay(SAFETY_FETCH_MS)
+                    delay(if (pushless) PUSHLESS_POLL_MS else SAFETY_FETCH_MS)
                     val age = AppGraph.state.ageMs()
-                    if (age == null || age > STALE_PUSH_MS) AppGraph.state.refresh()
+                    val locked = AppGraph.state.gateNow(cfg) is Gate.Closed
+                    if (age == null || age > STALE_PUSH_MS || (pushless && locked)) AppGraph.state.refresh()
                 }
             }
         }
@@ -185,7 +198,11 @@ class BlockerService : AccessibilityService(), OverlayActions {
         when (verdict) {
             Verdict.Allow -> hideOverlay()
             Verdict.Block -> showOverlay(bounds.takeIf { it.area > 0 } ?: fullScreen(), model(gate))
-            Verdict.Undecided -> Unit
+            // Nothing decisive yet. Leave an existing overlay alone, but don't stay open-ended: if we
+            // still can't tell where we are after a moment, fail closed.
+            Verdict.Undecided -> if (android.os.SystemClock.elapsedRealtime() - frontSince > UNDECIDED_LIMIT_MS) {
+                showOverlay(bounds.takeIf { it.area > 0 } ?: fullScreen(), model(gate))
+            }
         }
     }
 
@@ -301,8 +318,10 @@ class BlockerService : AccessibilityService(), OverlayActions {
         const val CLAUDE_PACKAGE = "com.anthropic.claude"
         const val SYSTEM_UI = "com.android.systemui"
         const val DEBOUNCE_MS = 150L
+        const val UNDECIDED_LIMIT_MS = 1_500L
         const val GUARD_DELAY_MS = 350L
         const val SAFETY_FETCH_MS = 30_000L
+        const val PUSHLESS_POLL_MS = 3_000L
         const val STALE_PUSH_MS = 120_000L
     }
 }
