@@ -46,3 +46,26 @@ object TreeReader {
         }
     }
 }
+
+/** Collects visible labels from a Settings or installer screen. Used only while Lockdown is on. */
+object TextReader {
+    private const val MAX_NODES = 400
+
+    fun labels(root: AccessibilityNodeInfo): List<String> {
+        val out = ArrayList<String>(64)
+        var seen = 0
+        fun walk(n: AccessibilityNodeInfo, depth: Int) {
+            if (seen >= MAX_NODES) return
+            seen++
+            n.text?.toString()?.takeIf { it.isNotBlank() }?.let { out += it }
+            n.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let { out += it }
+            if (depth >= TreeReader.MAX_DEPTH) return
+            for (i in 0 until n.childCount) {
+                val c = n.getChild(i) ?: continue
+                try { walk(c, depth + 1) } finally { @Suppress("DEPRECATION") c.recycle() }
+            }
+        }
+        walk(root, 0)
+        return out
+    }
+}

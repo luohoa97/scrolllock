@@ -42,6 +42,8 @@ data class Rules(
     val rules: List<Rule> = emptyList(),
     /** Packages the Lockdown settings guard watches. */
     val guardPackages: List<String> = emptyList(),
+    /** Words that, next to the app's name, mean the screen can remove or disable ScrollLock. */
+    val guardKeywords: List<String> = emptyList(),
 ) {
     companion object {
         private val json = Json { ignoreUnknownKeys = true; isLenient = true }

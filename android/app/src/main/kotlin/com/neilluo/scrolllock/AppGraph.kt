@@ -5,6 +5,7 @@ import com.neilluo.scrolllock.data.RelayApi
 import com.neilluo.scrolllock.data.SettingsStore
 import com.neilluo.scrolllock.data.StateRepository
 import com.neilluo.scrolllock.data.StatsStore
+import com.neilluo.scrolllock.lockdown.Lockdown
 import com.neilluo.scrolllock.push.PushRegistrar
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,4 +26,5 @@ object AppGraph {
     val relay: RelayApi by lazy { RelayApi() }
     val fcm: PushRegistrar by lazy { PushRegistrar(app, settings, relay) }
     val state: StateRepository by lazy { StateRepository(app, settings, stats, relay, scope) }
+    val lockdown: Lockdown by lazy { Lockdown(app, settings, state) }
 }

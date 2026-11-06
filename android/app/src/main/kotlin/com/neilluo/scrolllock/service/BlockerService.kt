@@ -37,6 +37,8 @@ class BlockerService : AccessibilityService(), OverlayActions {
     private var policy = ScreenPolicy()
     private var cfg = Settings()
     private val tracker = ForegroundTracker(INSTAGRAM) { ignoredPackages() }
+    private var rules = com.neilluo.scrolllock.detect.Rules()
+    private var guardPending = false
 
     private var verdict = Verdict.Undecided
     private var bounds = Box(0, 0, 0, 0)
@@ -47,7 +49,8 @@ class BlockerService : AccessibilityService(), OverlayActions {
     override fun onServiceConnected() {
         super.onServiceConnected()
         overlay = OverlayController(this, this)
-        engine = DetectionEngine(RulesLoader.load(this))
+        rules = RulesLoader.load(this)
+        engine = DetectionEngine(rules)
         scope.launch {
             AppGraph.settings.flow.collect { s ->
                 val blockChanged = s.blockReels != cfg.blockReels || s.blockExplore != cfg.blockExplore
@@ -66,6 +69,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
         val pkg = event.packageName?.toString()
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                if (cfg.lockdown && pkg in rules.guardPackages) scheduleGuard()
                 if (tracker.onWindowState(pkg)) {
                     if (tracker.targetInFront) onInstagramFront() else onInstagramGone()
                 } else if (tracker.targetInFront && pkg == INSTAGRAM) {
@@ -104,6 +108,26 @@ class BlockerService : AccessibilityService(), OverlayActions {
         frontJobs = null
         verdict = Verdict.Undecided
         overlay.hide()
+    }
+
+    /** Lockdown: if this Settings screen could remove ScrollLock, send the user home. */
+    private fun scheduleGuard() {
+        if (guardPending) return
+        guardPending = true
+        scope.launch {
+            delay(GUARD_DELAY_MS)
+            guardPending = false
+            val root = rootInActiveWindow ?: return@launch
+            try {
+                if (root.packageName?.toString() !in rules.guardPackages) return@launch
+                val texts = TextReader.labels(root)
+                if (SettingsGuard.shouldBlock(texts, getString(R.string.app_name), rules.guardKeywords)) {
+                    performGlobalAction(GLOBAL_ACTION_HOME)
+                }
+            } finally {
+                @Suppress("DEPRECATION") root.recycle()
+            }
+        }
     }
 
     private fun scheduleEvaluate() {
@@ -210,6 +234,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
         const val CLAUDE_PACKAGE = "com.anthropic.claude"
         const val SYSTEM_UI = "com.android.systemui"
         const val DEBOUNCE_MS = 150L
+        const val GUARD_DELAY_MS = 350L
         const val SAFETY_FETCH_MS = 30_000L
         const val STALE_PUSH_MS = 120_000L
     }
