@@ -7,10 +7,15 @@
 # keeping every hook that is already there. The script reports "working" or "idle" to your relay and
 # never sends prompt text. It does nothing unless SCROLLLOCK_URL and SCROLLLOCK_WRITE_TOKEN are set.
 #
-# Overrides: SL_BIN (where the script goes), SL_SET (which settings.json to edit).
+# Overrides: SL_BIN (where the script goes), SL_SET (which settings file to edit), SL_EVENTS (which
+# events to hook, space separated) and SL_TIMEOUT (the hook timeout, in whatever unit the tool uses).
+# Defaults suit Claude Code; docs/CONNECT.md has the values for Codex and Gemini CLI.
 set -eu
 
 SL_SET="${SL_SET:-$HOME/.claude/settings.json}"
+SL_EVENTS="${SL_EVENTS:-SessionStart UserPromptSubmit PreToolUse PostToolUse Stop SessionEnd}"
+SL_TIMEOUT="${SL_TIMEOUT:-5}"
+export SL_EVENTS SL_TIMEOUT
 if [ -z "${SL_BIN:-}" ]; then
   if [ -w /usr/local/bin ] || [ "$(id -u)" = 0 ]; then SL_BIN=/usr/local/bin/scrolllock-hook; else SL_BIN="$HOME/.local/bin/scrolllock-hook"; fi
 fi
@@ -40,7 +45,7 @@ fi
 [ -n "$SCROLLLOCK_URL" ] && [ -n "$SCROLLLOCK_WRITE_TOKEN" ] || exit 0
 in=$(cat 2>/dev/null)
 f() { printf '%s' "$in" | tr '\n' ' ' | grep -o "\"$1\" *: *\"[^\"]*\"" | head -n 1 | sed 's/^[^:]*: *"//; s/"$//'; }
-case "$(f hook_event_name)" in SessionStart) e=hello;; UserPromptSubmit) e=working;; PreToolUse) e=heartbeat;; PostToolUse) e=tool_done;; Stop) e=idle;; SessionEnd) e=end;; *) exit 0;; esac
+case "$(f hook_event_name)" in SessionStart) e=hello;; UserPromptSubmit|BeforeAgent) e=working;; PreToolUse|BeforeTool) e=heartbeat;; PostToolUse|AfterTool) e=tool_done;; Stop|AfterAgent|Interrupt) e=idle;; SessionEnd) e=end;; *) exit 0;; esac
 sid=$(f session_id | tr -cd 'A-Za-z0-9._-' | cut -c1-120); [ -n "$sid" ] || exit 0
 h=false; t=2
 if [ "$e" = working ]; then t=3; c=$(f prompt | sed -n 's/^[[:space:]]*\(.\).*/\1/p' | head -n 1); [ "$c" != "<" ] && h=true; fi
@@ -55,7 +60,7 @@ case "$e" in
     if [ -z "$p" ] || ! kill -0 "$p" 2>/dev/null; then
       cl=""; a=$PPID; i=0
       while [ "$i" -lt 8 ] && [ -n "$a" ] && [ "$a" -gt 1 ] 2>/dev/null; do
-        if ps -o args= -p "$a" 2>/dev/null | grep -qi claude; then cl=$a; break; fi
+        if ps -o args= -p "$a" 2>/dev/null | grep -qiE 'claude|codex|gemini'; then cl=$a; break; fi
         a=$(ps -o ppid= -p "$a" 2>/dev/null | tr -d ' '); i=$((i + 1))
       done
       if command -v setsid >/dev/null 2>&1; then setsid sh "$0" --beat "$sid" "$cl" >/dev/null 2>&1 </dev/null &
@@ -91,11 +96,11 @@ if os.path.exists(path) and not os.path.exists(path + ".scrolllock.bak"):
     shutil.copy2(path, path + ".scrolllock.bak")
 hooks = data.setdefault("hooks", {})
 added = 0
-for event in ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "SessionEnd"):
+for event in os.environ["SL_EVENTS"].split():
     groups = hooks.setdefault(event, [])
     if any(h.get("command") == cmd for g in groups for h in g.get("hooks", [])):
         continue
-    groups.append({"hooks": [{"type": "command", "command": cmd, "timeout": 5}]})
+    groups.append({"hooks": [{"type": "command", "command": cmd, "timeout": int(os.environ["SL_TIMEOUT"])}]})
     added += 1
 tmp = path + ".tmp"
 with open(tmp, "w") as f:
@@ -118,10 +123,10 @@ if (fs.existsSync(path)) {
 }
 data.hooks = data.hooks || {};
 let added = 0;
-for (const ev of ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "SessionEnd"]) {
+for (const ev of process.env.SL_EVENTS.split(/\s+/).filter(Boolean)) {
   const groups = (data.hooks[ev] = data.hooks[ev] || []);
   if (groups.some((g) => (g.hooks || []).some((h) => h.command === cmd))) continue;
-  groups.push({ hooks: [{ type: "command", command: cmd, timeout: 5 }] });
+  groups.push({ hooks: [{ type: "command", command: cmd, timeout: Number(process.env.SL_TIMEOUT) }] });
   added++;
 }
 fs.writeFileSync(path + ".tmp", JSON.stringify(data, null, 2) + "\n");
@@ -133,7 +138,7 @@ JS
 if command -v python3 >/dev/null 2>&1; then merge_py
 elif command -v node >/dev/null 2>&1; then merge_node
 else
-  echo "scrolllock: need python3 or node to edit $SL_SET. The hook script is at $SL_BIN; add it to the six events yourself."
+  echo "scrolllock: need python3 or node to edit $SL_SET. The hook script is at $SL_BIN; add it to the events yourself."
   exit 1
 fi
 

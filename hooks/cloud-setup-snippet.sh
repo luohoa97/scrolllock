@@ -24,7 +24,7 @@ fi
 [ -n "$SCROLLLOCK_URL" ] && [ -n "$SCROLLLOCK_WRITE_TOKEN" ] || exit 0
 in=$(cat 2>/dev/null)
 f() { printf '%s' "$in" | tr '\n' ' ' | grep -o "\"$1\" *: *\"[^\"]*\"" | head -n 1 | sed 's/^[^:]*: *"//; s/"$//'; }
-case "$(f hook_event_name)" in SessionStart) e=hello;; UserPromptSubmit) e=working;; PreToolUse) e=heartbeat;; PostToolUse) e=tool_done;; Stop) e=idle;; SessionEnd) e=end;; *) exit 0;; esac
+case "$(f hook_event_name)" in SessionStart) e=hello;; UserPromptSubmit|BeforeAgent) e=working;; PreToolUse|BeforeTool) e=heartbeat;; PostToolUse|AfterTool) e=tool_done;; Stop|AfterAgent|Interrupt) e=idle;; SessionEnd) e=end;; *) exit 0;; esac
 sid=$(f session_id | tr -cd 'A-Za-z0-9._-' | cut -c1-120); [ -n "$sid" ] || exit 0
 h=false; t=2
 if [ "$e" = working ]; then t=3; c=$(f prompt | sed -n 's/^[[:space:]]*\(.\).*/\1/p' | head -n 1); [ "$c" != "<" ] && h=true; fi
@@ -39,7 +39,7 @@ case "$e" in
     if [ -z "$p" ] || ! kill -0 "$p" 2>/dev/null; then
       cl=""; a=$PPID; i=0
       while [ "$i" -lt 8 ] && [ -n "$a" ] && [ "$a" -gt 1 ] 2>/dev/null; do
-        if ps -o args= -p "$a" 2>/dev/null | grep -qi claude; then cl=$a; break; fi
+        if ps -o args= -p "$a" 2>/dev/null | grep -qiE 'claude|codex|gemini'; then cl=$a; break; fi
         a=$(ps -o ppid= -p "$a" 2>/dev/null | tr -d ' '); i=$((i + 1))
       done
       if command -v setsid >/dev/null 2>&1; then setsid sh "$0" --beat "$sid" "$cl" >/dev/null 2>&1 </dev/null &

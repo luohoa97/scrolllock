@@ -87,6 +87,8 @@ set -Ux SCROLLLOCK_WRITE_TOKEN <the write token>
 
 Restart Claude Code. The installer needs `python3` or `node` to edit `settings.json`; it won't touch a file that isn't valid JSON.
 
+**Codex, Gemini CLI, or any other tool with hooks.** See [docs/CONNECT.md](docs/CONNECT.md) for step-by-step guides, the event contract for tools of your own, and a wrapper for tools with no hooks.
+
 What the hook sends: a session id, the event name, whether a human typed the prompt, and a lease length. Never prompt text.
 
 **How "working" stays true.** Each Claude event (a prompt, a tool starting or finishing) tells the relay the session is working for the next 10 seconds, which is the *lease*. While a turn runs, the hook also starts a tiny detached loop that renews the lease every 3 seconds, so a session that dies, loses its container or is killed locks within about 10 seconds. The loop prints nothing, never touches Claude's context, and stops on Stop, on session end, when Claude's own process is gone, or after 2 minutes with no Claude activity (10 minutes while a tool is running). The phone and extension ask the relay again just before a lease runs out, so they stay unlocked while Claude works. An interrupted turn (Esc) fires no Stop event, so it locks when that 2 minutes passes.
@@ -160,26 +162,8 @@ The Settings guard reads the labels on Settings screens, only while Lockdown is 
 ## What the app can see
 
 - Which windows are on screen and their package names and bounds, to find a blocked app and cover only its window.
-- One screenshot of the display each time the lock screen goes up, used only to draw the blurred background. It stays in memory, is never saved or sent, and is dropped when the lock screen goes.
-- Instagram's screen structure, only in the optional messages mode or when you ask for a debug dump: view ids, class names, content descriptions, which tab is selected, sizes. Never the text of messages or text fields.
+- A blocked app's screen structure, only when you ask for a debug dump in Settings: view ids, class names, content descriptions, which tab is selected, sizes. Never the text of messages or text fields.
 - Nothing is sent anywhere except the relay: your read token to ask for status, and your push token to register.
-
-## Letting messages through (optional)
-
-By default the whole app is blocked and no screen detection runs. To let a recognised messages screen through, set `ALLOW_MESSAGES = true` in `BlockerService.kt` and rebuild. That mode depends on Instagram's view ids and labels, which change. Fixing the rules should not need a rebuild.
-
-1. Settings, Debug, **Capture next Instagram screen in 5s**, then open the screen that slipped through. The app copies a dump to the clipboard. Descriptions are redacted except for tabs and the selected item.
-2. Look at the `surface` and `rule` fields. Edit `android/app/src/main/assets/rules.json`.
-3. To try it without rebuilding:
-
-   ```fish
-   adb push rules.json /data/local/tmp/rules.json
-   adb shell run-as com.neilluo.scrolllock.debug cp /data/local/tmp/rules.json files/rules.json
-   ```
-
-   A valid file in the app's `files/` folder wins over the bundled one. A broken one is ignored.
-
-In that mode the app is default-deny: only a screen it positively recognises as messages is let through, so a stale rule can make it block too much, but never too little.
 
 ## Fish helpers
 
