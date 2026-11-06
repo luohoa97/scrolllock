@@ -12,7 +12,7 @@ data class Waiter(val name: String, val detail: String?) {
 }
 
 object WaitingSummary {
-    /** "Claude · organisely, Coordinator" for the overlay and notification; "+N more" past three. */
+    /** "Claude · my-project, Coordinator" for the overlay and notification; "+N more" past three. */
     fun names(list: List<Waiter>): String {
         if (list.isEmpty()) return ""
         val shown = list.take(3).joinToString(", ") { w -> w.detail?.let { "${w.name} · $it" } ?: w.name }
