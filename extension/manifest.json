@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ScrollLock",
   "version": "0.1.0",
-  "description": "Blocks Instagram Reels and Explore on desktop unless Claude is working. Messages stay usable.",
+  "description": "Blocks instagram.com on desktop unless Claude is working. Messages stay usable.",
   "permissions": ["storage"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*"],
   "background": { "service_worker": "background.js" },

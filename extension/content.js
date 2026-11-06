@@ -4,7 +4,7 @@
   const Gate = globalThis.ScrollLockGate;
   const Route = globalThis.ScrollLockRoute;
 
-  const DEFAULTS = { relayUrl: "", readToken: "", mode: "claude_busy", minutes: 15, grace: 10, blockReels: true, blockExplore: true, bypass: null };
+  const DEFAULTS = { relayUrl: "", readToken: "", mode: "claude_busy", minutes: 15, grace: 10, bypass: null };
   let cfg = { ...DEFAULTS };
   let snap = null;
   let fetchFailed = false;
@@ -51,7 +51,7 @@
 
   function tick() {
     if (document.visibilityState !== "visible") return;
-    if (!Route.isBlocked(location.pathname, cfg)) {
+    if (!Route.isBlocked(location.pathname)) {
       hideOverlay();
       return;
     }

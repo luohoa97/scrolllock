@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const KEYS = ["relayUrl", "readToken", "mode", "minutes", "grace", "blockReels", "blockExplore"];
+const KEYS = ["relayUrl", "readToken", "mode", "minutes", "grace"];
 
 chrome.storage.local.get(KEYS, (v) => {
   $("relayUrl").value = v.relayUrl || "";
@@ -7,8 +7,6 @@ chrome.storage.local.get(KEYS, (v) => {
   $("mode").value = v.mode || "claude_busy";
   $("minutes").value = v.minutes || 15;
   $("grace").value = v.grace || 10;
-  $("blockReels").checked = v.blockReels !== false;
-  $("blockExplore").checked = v.blockExplore !== false;
 });
 
 $("save").addEventListener("click", async () => {
@@ -32,8 +30,6 @@ $("save").addEventListener("click", async () => {
     mode: $("mode").value,
     minutes: Math.min(240, Math.max(1, Number($("minutes").value) || 15)),
     grace: Math.min(120, Math.max(0, Number($("grace").value) || 0)),
-    blockReels: $("blockReels").checked,
-    blockExplore: $("blockExplore").checked,
   };
   await chrome.storage.local.set(cfg);
   msg.textContent = "Testing…";

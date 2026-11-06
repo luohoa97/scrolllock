@@ -1,26 +1,27 @@
 package com.neilluo.scrolllock.detect
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScreenPolicyTest {
-    @Test fun blocksReelsAndExploreByDefault() {
+    @Test fun everythingButMessagesIsBlocked() {
         val p = ScreenPolicy()
-        assertEquals(Verdict.Block, p.feed(Surface.Reels))
-        assertEquals(Verdict.Block, p.feed(Surface.Explore))
-    }
-
-    @Test fun allowsHomeDmAndProfile() {
-        for (s in listOf(Surface.Home, Surface.Dm, Surface.Profile)) {
-            val p = ScreenPolicy()
-            p.feed(s)
-            assertEquals(Verdict.Allow, p.feed(s))
+        for (s in listOf(Surface.Reels, Surface.Explore, Surface.Home, Surface.Profile)) {
+            assertEquals("$s", Verdict.Block, p.feed(s))
         }
     }
 
-    @Test fun oneStrayAllowedResultDoesNotLiftABlock() {
+    @Test fun anUnrecognisedScreenIsBlocked() {
+        assertEquals(Verdict.Block, ScreenPolicy().feed(Surface.Unknown))
+    }
+
+    @Test fun messagesAreAllowedOnceConfirmed() {
+        val p = ScreenPolicy()
+        assertEquals(Verdict.Undecided, p.feed(Surface.Dm))
+        assertEquals(Verdict.Allow, p.feed(Surface.Dm))
+    }
+
+    @Test fun oneStrayMessagesResultDoesNotLiftABlock() {
         val p = ScreenPolicy()
         assertEquals(Verdict.Block, p.feed(Surface.Reels))
         assertEquals(Verdict.Undecided, p.feed(Surface.Dm))
@@ -29,33 +30,22 @@ class ScreenPolicyTest {
         assertEquals(Verdict.Allow, p.feed(Surface.Dm))
     }
 
-    @Test fun anUnknownInTheMiddleRestartsTheAllowRun() {
+    @Test fun leavingMessagesBlocksAtOnce() {
         val p = ScreenPolicy()
-        p.feed(Surface.Home)
-        p.feed(Surface.Unknown)
-        assertEquals(Verdict.Undecided, p.feed(Surface.Home))
+        p.feed(Surface.Dm); p.feed(Surface.Dm)
+        assertEquals(Verdict.Block, p.feed(Surface.Home))
     }
 
-    @Test fun unknownIsUndecidedUntilTheLimitThenFailsClosed() {
-        val p = ScreenPolicy(unknownLimit = 3)
-        assertEquals(Verdict.Undecided, p.feed(Surface.Unknown))
-        assertEquals(Verdict.Undecided, p.feed(Surface.Unknown))
-        assertFalse(p.failingClosed)
-        assertEquals(Verdict.Block, p.feed(Surface.Unknown))
-        assertTrue(p.failingClosed)
-    }
-
-    @Test fun anAllowedScreenResetsTheUnknownRun() {
-        val p = ScreenPolicy(unknownLimit = 2)
-        p.feed(Surface.Unknown)
+    @Test fun resetForgetsProgress() {
+        val p = ScreenPolicy()
         p.feed(Surface.Dm)
-        assertEquals(Verdict.Allow, p.feed(Surface.Dm))
-        assertEquals(Verdict.Undecided, p.feed(Surface.Unknown))
+        p.reset()
+        assertEquals(Verdict.Undecided, p.feed(Surface.Dm))
     }
 
-    @Test fun blockedSetIsConfigurable() {
-        val p = ScreenPolicy(blocked = setOf(Surface.Reels))
-        p.feed(Surface.Explore)
-        assertEquals(Verdict.Allow, p.feed(Surface.Explore))
+    @Test fun theAllowedSetIsConfigurable() {
+        val p = ScreenPolicy(allowed = setOf(Surface.Dm, Surface.Home))
+        p.feed(Surface.Home)
+        assertEquals(Verdict.Allow, p.feed(Surface.Home))
     }
 }

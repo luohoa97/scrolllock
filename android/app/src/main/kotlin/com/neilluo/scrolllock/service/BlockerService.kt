@@ -54,15 +54,13 @@ class BlockerService : AccessibilityService(), OverlayActions {
         engine = DetectionEngine(rules)
         scope.launch {
             AppGraph.settings.flow.collect { s ->
-                val blockChanged = s.blockReels != cfg.blockReels || s.blockExplore != cfg.blockExplore
                 cfg = s
-                if (blockChanged) {
-                    policy = ScreenPolicy(blockedSurfaces(s))
-                    verdict = Verdict.Undecided
-                }
             }
         }
         scope.launch { AppGraph.fcm.ensureRegistered() }
+        // Instagram may already be open when the service starts, with no window event to tell us.
+        val pkg = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+        if (tracker.onWindowState(pkg) && tracker.targetInFront) onInstagramFront()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -266,11 +264,6 @@ class BlockerService : AccessibilityService(), OverlayActions {
         overlay.hide()
     }
 
-    private fun blockedSurfaces(s: Settings): Set<Surface> = buildSet {
-        if (s.blockReels) add(Surface.Reels)
-        if (s.blockExplore) add(Surface.Explore)
-    }
-
     private fun ignoredPackages(): Set<String> {
         val ime = getSystemService(InputMethodManager::class.java)
             ?.enabledInputMethodList?.map { it.packageName }.orEmpty()
@@ -318,7 +311,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
         const val CLAUDE_PACKAGE = "com.anthropic.claude"
         const val SYSTEM_UI = "com.android.systemui"
         const val DEBOUNCE_MS = 150L
-        const val UNDECIDED_LIMIT_MS = 1_500L
+        const val UNDECIDED_LIMIT_MS = 2_500L
         const val GUARD_DELAY_MS = 350L
         const val SAFETY_FETCH_MS = 30_000L
         const val PUSHLESS_POLL_MS = 3_000L

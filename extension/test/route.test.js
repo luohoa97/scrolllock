@@ -10,6 +10,7 @@ test("classifies instagram paths", () => {
   assert.equal(R.classify("/explore/search/"), "explore");
   assert.equal(R.classify("/direct/inbox/"), "dm");
   assert.equal(R.classify("/direct/t/123456/"), "dm");
+  assert.equal(R.classify("/accounts/login/"), "account");
   assert.equal(R.classify("/"), "other");
   assert.equal(R.classify("/p/C1abc/"), "other");
   assert.equal(R.classify("/someone/"), "other");
@@ -21,13 +22,14 @@ test("matching is case-insensitive and tolerant of empty input", () => {
   assert.equal(R.classify(undefined), "other");
 });
 
-test("messages are never blocked", () => {
-  assert.equal(R.isBlocked("/direct/inbox/", { blockReels: true, blockExplore: true }), false);
+test("only messages and login pages pass", () => {
+  assert.equal(R.isBlocked("/direct/inbox/"), false);
+  assert.equal(R.isBlocked("/direct/t/99/"), false);
+  assert.equal(R.isBlocked("/accounts/login/"), false);
 });
 
-test("settings control what is blocked", () => {
-  assert.equal(R.isBlocked("/reels/", { blockReels: false, blockExplore: true }), false);
-  assert.equal(R.isBlocked("/explore/", { blockReels: true, blockExplore: false }), false);
-  assert.equal(R.isBlocked("/reels/", { blockReels: true, blockExplore: true }), true);
-  assert.equal(R.isBlocked("/explore/", {}), true);
+test("everything else is blocked, including the home feed, posts and profiles", () => {
+  for (const p of ["/", "/reels/", "/explore/", "/p/C1abc/", "/someone/", "/stories/someone/1/", "/unknown/path/"]) {
+    assert.equal(R.isBlocked(p), true, p);
+  }
 });

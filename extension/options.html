@@ -14,7 +14,7 @@
   small { opacity: .7; }
 </style>
 <h1>ScrollLock</h1>
-<p>Blocks Instagram Reels and Explore until Claude is working. Messages always work.</p>
+<p>Blocks Instagram on instagram.com until Claude is working. Messages always work.</p>
 <label>Relay URL <input id="relayUrl" type="text" placeholder="https://your-relay.vercel.app" autocomplete="off"></label>
 <label>Read token <input id="readToken" type="password" autocomplete="off"></label>
 <label>Unlock rule
@@ -27,8 +27,6 @@
   <label>My-turn minutes <input id="minutes" type="number" min="1" max="240" value="15"></label>
   <label>Grace seconds <input id="grace" type="number" min="0" max="120" value="10"></label>
 </div>
-<label><input id="blockReels" type="checkbox" checked> Block Reels</label>
-<label><input id="blockExplore" type="checkbox" checked> Block Explore</label>
 <button id="save">Save and test</button>
 <div id="msg"></div>
 <small>The token is stored in this browser only and is sent only to your relay.</small>

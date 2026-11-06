@@ -21,8 +21,6 @@ data class Settings(
     val mode: UnlockMode = UnlockMode.ClaudeBusy,
     val myTurnMinutes: Int = 15,
     val graceSeconds: Int = 10,
-    val blockReels: Boolean = true,
-    val blockExplore: Boolean = true,
     val onboarded: Boolean = false,
     val lockdown: Boolean = false,
     val coolingOffHours: Int = 24,
@@ -43,8 +41,6 @@ class SettingsStore(private val context: Context) {
         val mode = stringPreferencesKey("mode")
         val myTurnMinutes = intPreferencesKey("myTurnMinutes")
         val graceSeconds = intPreferencesKey("graceSeconds")
-        val blockReels = booleanPreferencesKey("blockReels")
-        val blockExplore = booleanPreferencesKey("blockExplore")
         val onboarded = booleanPreferencesKey("onboarded")
         val lockdown = booleanPreferencesKey("lockdown")
         val coolingOffHours = intPreferencesKey("coolingOffHours")
@@ -64,8 +60,6 @@ class SettingsStore(private val context: Context) {
             mode = UnlockMode.fromWire(p[K.mode]),
             myTurnMinutes = p[K.myTurnMinutes] ?: 15,
             graceSeconds = p[K.graceSeconds] ?: 10,
-            blockReels = p[K.blockReels] ?: true,
-            blockExplore = p[K.blockExplore] ?: true,
             onboarded = p[K.onboarded] ?: false,
             lockdown = p[K.lockdown] ?: false,
             coolingOffHours = p[K.coolingOffHours] ?: 24,
@@ -89,11 +83,6 @@ class SettingsStore(private val context: Context) {
         it[K.myTurnMinutes] = minutes.coerceIn(1, 240)
         it[K.graceSeconds] = grace.coerceIn(0, 120)
         it[K.registeredSig] = ""
-    }
-
-    suspend fun setBlocked(reels: Boolean, explore: Boolean) = context.dataStore.edit {
-        it[K.blockReels] = reels
-        it[K.blockExplore] = explore
     }
 
     suspend fun setOnboarded(v: Boolean) = context.dataStore.edit { it[K.onboarded] = v }

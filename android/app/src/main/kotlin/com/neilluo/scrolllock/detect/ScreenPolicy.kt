@@ -4,37 +4,26 @@ package com.neilluo.scrolllock.detect
 enum class Verdict { Allow, Block, Undecided }
 
 /**
- * Turns [Surface] results into a verdict. A run of [unknownLimit] consecutive Unknown results
- * while Instagram is in front blocks, so an Instagram update that breaks the rules fails closed
- * instead of silently letting Reels through. Allowed surfaces reset the run.
+ * Default deny. While locked, Instagram is blocked unless the screen is positively recognised as
+ * one of [allowed] (messages, by default). A screen the rules don't recognise is blocked, not
+ * waved through, so an Instagram update that breaks the rules can only over-block, never leak.
+ * Blocking is immediate. Unblocking needs [allowConfirm] matching results in a row, so one stray
+ * match can't drop the overlay.
  */
 class ScreenPolicy(
-    private val blocked: Set<Surface> = setOf(Surface.Reels, Surface.Explore),
-    private val unknownLimit: Int = 4,
-    /** Consecutive allowed results needed before the overlay may come down. Stops flicker. */
+    private val allowed: Set<Surface> = setOf(Surface.Dm),
     private val allowConfirm: Int = 2,
 ) {
-    private var unknownRun = 0
     private var allowRun = 0
 
-    fun reset() { unknownRun = 0; allowRun = 0 }
+    fun reset() { allowRun = 0 }
 
     fun feed(surface: Surface): Verdict {
-        if (surface == Surface.Unknown) {
-            allowRun = 0
-            unknownRun++
-            return if (unknownRun >= unknownLimit) Verdict.Block else Verdict.Undecided
-        }
-        unknownRun = 0
-        if (surface in blocked) {
+        if (surface !in allowed) {
             allowRun = 0
             return Verdict.Block
         }
-        // Blocking is instant, unblocking has to be sure: one stray match must not drop the overlay.
         allowRun++
         return if (allowRun >= allowConfirm) Verdict.Allow else Verdict.Undecided
     }
-
-    /** True when the last result was a block caused by not recognising the screen. */
-    val failingClosed: Boolean get() = unknownRun >= unknownLimit
 }

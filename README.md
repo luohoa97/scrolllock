@@ -2,7 +2,7 @@
 
 <!-- Intro goes here. Neil writes this part. -->
 
-Instagram Reels and Explore stay blocked unless a Claude Code session is working. Messages always work.
+Instagram stays blocked unless a Claude Code session is working. Only messages get through. Anything ScrollLock doesn't recognise is blocked too.
 
 | Piece | What it does |
 | --- | --- |
@@ -161,7 +161,7 @@ The Settings guard reads the labels on Settings screens, only while Lockdown is 
 
 ## When Instagram updates and Reels stop being blocked
 
-Detection depends on Instagram's view ids and labels, which change. Fixing it should not need a rebuild.
+Recognising the messages screen depends on Instagram's view ids and labels, which change. Fixing it should not need a rebuild.
 
 1. Settings, Debug, **Capture next Instagram screen in 5s**, then open the screen that slipped through. The app copies a dump to the clipboard. Descriptions are redacted except for tabs and the selected item.
 2. Look at the `surface` and `rule` fields. Edit `android/app/src/main/assets/rules.json`.
@@ -174,7 +174,7 @@ Detection depends on Instagram's view ids and labels, which change. Fixing it sh
 
    A valid file in the app's `files/` folder wins over the bundled one. A broken one is ignored.
 
-The app also fails closed: after four screens in a row it can't recognise, Instagram is blocked until it recognises one again.
+The app is default-deny: only a screen it positively recognises as messages is let through, so a stale rule can make it block too much, but never too little. If messages get blocked after an update, the dump is how you fix the DM rules.
 
 ## Fish helpers
 

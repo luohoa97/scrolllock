@@ -39,7 +39,7 @@ const PAGE = `<!doctype html><title>stub</title><body style="background:linear-g
   await ctx.route("https://www.instagram.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: PAGE }));
 
   let sw = ctx.serviceWorkers()[0] || (await ctx.waitForEvent("serviceworker"));
-  await sw.evaluate((cfg) => chrome.storage.local.set(cfg), { relayUrl, readToken: "test-read-token", mode: "claude_busy", minutes: 15, grace: 10, blockReels: true, blockExplore: true });
+  await sw.evaluate((cfg) => chrome.storage.local.set(cfg), { relayUrl, readToken: "test-read-token", mode: "claude_busy", minutes: 15, grace: 10 });
 
   const page = await ctx.newPage();
   const overlayUp = () => page.evaluate(() => !!document.getElementById("scrolllock-overlay"));
@@ -76,8 +76,7 @@ const PAGE = `<!doctype html><title>stub</title><body style="background:linear-g
   await sleep(2500);
   check("no overlay on /direct/inbox/", !(await overlayUp()));
   await page.goto("https://www.instagram.com/");
-  await sleep(1500);
-  check("no overlay on the home feed", !(await overlayUp()));
+  check("the home feed is blocked too (default deny)", !!(await waitFor(overlayUp, 4000)));
 
   // 5. Explore is blocked too.
   await page.goto("https://www.instagram.com/explore/");

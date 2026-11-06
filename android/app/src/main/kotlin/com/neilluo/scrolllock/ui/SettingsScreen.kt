@@ -77,9 +77,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        Section("What gets blocked", note = "Messages are never blocked.") {
-            ToggleRow("Reels", s.blockReels) { scope.launch { AppGraph.settings.setBlocked(it, s.blockExplore) } }
-            ToggleRow("Explore", s.blockExplore) { scope.launch { AppGraph.settings.setBlocked(s.blockReels, it) } }
+        Section("While locked") {
+            Text(
+                "All of Instagram is blocked except messages. A screen ScrollLock doesn't recognise is blocked too.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
 
         Section("Relay") { RelayEditor(s) }
