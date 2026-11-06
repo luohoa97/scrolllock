@@ -7,13 +7,21 @@ import type { EventName, SessionRow, Store } from "./types";
  */
 export async function applyEvent(
   store: Store,
-  ev: { sessionId: string; event: EventName; human?: boolean; leaseMs?: number },
+  ev: { sessionId: string; event: EventName; human?: boolean; leaseMs?: number; agent?: string | null; tasks?: { done: number; total: number; now: string | null; next: string | null } },
   now: number,
 ): Promise<SessionRow> {
   const prev = await store.getSession(ev.sessionId);
   const wasWorking = prev !== null && prev.state === "working" && prev.leaseUntil > now;
   const keepSince = wasWorking ? (prev.workingSince ?? prev.lastSeen) : now;
   const lease = ev.leaseMs ?? LEASE_MS;
+  // A task list outlives a single turn, so every event except `end` carries the last one forward.
+  const carry = {
+    agent: ev.agent ?? prev?.agent ?? null,
+    tasksDone: prev?.tasksDone ?? null,
+    tasksTotal: prev?.tasksTotal ?? null,
+    taskNow: prev?.taskNow ?? null,
+    taskNext: prev?.taskNext ?? null,
+  };
 
   let row: SessionRow;
   switch (ev.event) {
@@ -38,6 +46,7 @@ export async function applyEvent(
         workingSince: keepSince,
         lastUserPromptAt: ev.human ? now : (prev?.lastUserPromptAt ?? null),
         lastEvent: "working",
+        ...carry,
       };
       break;
     case "heartbeat":
@@ -49,17 +58,33 @@ export async function applyEvent(
         workingSince: keepSince,
         lastUserPromptAt: prev?.lastUserPromptAt ?? null,
         lastEvent: "heartbeat",
+        ...carry,
       };
       break;
     case "tool_done":
       if (!prev || !wasWorking) return prev ?? emptyIdle(ev.sessionId, now); // late PostToolUse after Stop: ignore
-      row = { ...prev, lastSeen: now, leaseUntil: now + lease, lastEvent: "tool_done" };
+      row = { ...prev, ...carry, lastSeen: now, leaseUntil: now + lease, lastEvent: "tool_done" };
       break;
     case "beat":
       // A keep-alive from the hook's background loop. It only extends a session that is already
       // working: a stray beat after Stop, or from a dead session's leftover loop, can't unlock anything.
       if (!prev || !wasWorking) return prev ?? emptyIdle(ev.sessionId, now);
-      row = { ...prev, lastSeen: now, leaseUntil: now + lease, lastEvent: "beat" };
+      row = { ...prev, ...carry, lastSeen: now, leaseUntil: now + lease, lastEvent: "beat" };
+      break;
+    case "progress":
+      // The agent updated its task list. Like a beat it only counts for a session that is already working.
+      if (!prev || !wasWorking) return prev ?? emptyIdle(ev.sessionId, now);
+      row = {
+        ...prev,
+        ...carry,
+        lastSeen: now,
+        leaseUntil: now + lease,
+        lastEvent: "progress",
+        tasksDone: ev.tasks?.done ?? null,
+        tasksTotal: ev.tasks?.total ?? null,
+        taskNow: ev.tasks?.now ?? null,
+        taskNext: ev.tasks?.next ?? null,
+      };
       break;
     case "idle":
     case "end":
@@ -71,6 +96,7 @@ export async function applyEvent(
         workingSince: null,
         lastUserPromptAt: prev?.lastUserPromptAt ?? null,
         lastEvent: ev.event,
+        ...(ev.event === "idle" ? carry : { agent: carry.agent, tasksDone: null, tasksTotal: null, taskNow: null, taskNext: null }),
       };
       break;
   }

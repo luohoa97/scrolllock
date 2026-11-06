@@ -89,7 +89,7 @@ Restart Claude Code. The installer needs `python3` or `node` to edit `settings.j
 
 **Codex, Gemini CLI, or any other tool with hooks.** See [docs/CONNECT.md](docs/CONNECT.md) for step-by-step guides, the event contract for tools of your own, and a wrapper for tools with no hooks.
 
-What the hook sends: a session id, the event name, whether a human typed the prompt, and a lease length. Never prompt text.
+What the hook sends: a session id, the event name, whether a human typed the prompt, a lease length, the agent's name (Claude, Codex, ...) and how many tasks it has done out of how many. Never prompt text. Task titles are sent only if you set `SCROLLLOCK_TASK_TEXT=1`; see [docs/CONNECT.md](docs/CONNECT.md).
 
 **How "working" stays true.** Each Claude event (a prompt, a tool starting or finishing) tells the relay the session is working for the next 10 seconds, which is the *lease*. While a turn runs, the hook also starts a tiny detached loop that renews the lease every 3 seconds, so a session that dies, loses its container or is killed locks within about 10 seconds. The loop prints nothing, never touches Claude's context, and stops on Stop, on session end, when Claude's own process is gone, or after 2 minutes with no Claude activity (10 minutes while a tool is running). The phone and extension ask the relay again just before a lease runs out, so they stay unlocked while Claude works. An interrupted turn (Esc) fires no Stop event, so it locks when that 2 minutes passes.
 

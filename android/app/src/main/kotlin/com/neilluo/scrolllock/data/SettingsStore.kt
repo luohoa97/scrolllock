@@ -25,6 +25,8 @@ data class Settings(
     val lockdown: Boolean = false,
     /** Armed bypass. Can only be switched on while Claude is working (see StateRepository). */
     val bypassEnabled: Boolean = false,
+    /** Show task titles (not just counts) from agents whose sender opted in. Off by default. */
+    val showTaskText: Boolean = false,
     val coolingOffHours: Int = 24,
     val unlockRequest: UnlockRequest? = null,
     val bypass: BypassState? = null,
@@ -46,6 +48,7 @@ class SettingsStore(private val context: Context) {
         val onboarded = booleanPreferencesKey("onboarded")
         val lockdown = booleanPreferencesKey("lockdown")
         val bypassEnabled = booleanPreferencesKey("bypassEnabled")
+        val showTaskText = booleanPreferencesKey("showTaskText")
         val coolingOffHours = intPreferencesKey("coolingOffHours")
         val reqBoot = intPreferencesKey("unlockReqBoot")
         val reqElapsed = longPreferencesKey("unlockReqElapsed")
@@ -66,6 +69,7 @@ class SettingsStore(private val context: Context) {
             onboarded = p[K.onboarded] ?: false,
             lockdown = p[K.lockdown] ?: false,
             bypassEnabled = p[K.bypassEnabled] ?: false,
+            showTaskText = p[K.showTaskText] ?: false,
             coolingOffHours = p[K.coolingOffHours] ?: 24,
             unlockRequest = p[K.reqElapsed]?.let { UnlockRequest(p[K.reqBoot] ?: 0, it) },
             bypass = p[K.bypassDay]?.let { BypassState(p[K.bypassBoot] ?: 0, p[K.bypassUntil] ?: 0, it) },
@@ -92,6 +96,7 @@ class SettingsStore(private val context: Context) {
     suspend fun setOnboarded(v: Boolean) = context.dataStore.edit { it[K.onboarded] = v }
     suspend fun setLockdown(v: Boolean) = context.dataStore.edit { it[K.lockdown] = v }
 
+    suspend fun setShowTaskText(v: Boolean) = context.dataStore.edit { it[K.showTaskText] = v }
     suspend fun setBypassEnabled(v: Boolean) = context.dataStore.edit { it[K.bypassEnabled] = v }
     suspend fun setCoolingOffHours(h: Int) = context.dataStore.edit { it[K.coolingOffHours] = h.coerceIn(1, 168) }
 

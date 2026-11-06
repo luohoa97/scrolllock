@@ -2,8 +2,17 @@ export type Mode = "claude_busy" | "my_turn";
 export type SessionState = "working" | "idle";
 
 /** What the hooks send. `human` is true when the prompt looks typed by a person. */
-export type EventName = "hello" | "working" | "heartbeat" | "beat" | "tool_done" | "idle" | "end";
-export const EVENT_NAMES: readonly EventName[] = ["hello", "working", "heartbeat", "beat", "tool_done", "idle", "end"];
+export type EventName = "hello" | "working" | "heartbeat" | "beat" | "progress" | "tool_done" | "idle" | "end";
+export const EVENT_NAMES: readonly EventName[] = ["hello", "working", "heartbeat", "beat", "progress", "tool_done", "idle", "end"];
+
+/** One working agent session. Counts are null until it reports a task list; the titles exist only if its sender opted in to sharing text. */
+export interface AgentProgress {
+  agent: string;
+  done: number | null;
+  total: number | null;
+  now: string | null;
+  next: string | null;
+}
 
 /** All times are epoch milliseconds. */
 export interface SessionRow {
@@ -14,6 +23,11 @@ export interface SessionRow {
   workingSince: number | null;
   lastUserPromptAt: number | null;
   lastEvent: EventName;
+  agent?: string | null;
+  tasksDone?: number | null;
+  tasksTotal?: number | null;
+  taskNow?: string | null;
+  taskNext?: string | null;
 }
 
 export interface UnlockConfig {
@@ -35,6 +49,8 @@ export interface Status {
   lastEventAt: number | null;
   relayStale: boolean;
   serverTime: number;
+  /** Every session working right now, newest first: which agent, and its task progress if it reports any. Never sent in pushes. */
+  agents: AgentProgress[];
 }
 
 export interface Device {

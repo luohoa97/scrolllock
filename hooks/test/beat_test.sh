@@ -44,4 +44,21 @@ check "Gemini AfterAgent is idle" "$(ev)" idle
 hook '{"session_id":"c1","hook_event_name":"UserPromptSubmit","prompt":"go"}' >/dev/null; sleep 0.6
 hook '{"session_id":"c1","hook_event_name":"Interrupt"}' >/dev/null; sleep 0.6
 check "Codex Interrupt is idle" "$(ev)" idle
+
+# Task progress: the agent's task list becomes counts, and text only when the sender opted in.
+lf() { grep -v 'event\\":\\"beat' "$work/req.jsonl" | tail -n 1 | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const b=JSON.parse(JSON.parse(s).body);console.log(b[process.argv[1]]===undefined?"-":b[process.argv[1]])})' "$1"; }
+todos='{"session_id":"t1","hook_event_name":"PreToolUse","tool_name":"TodoWrite","tool_input":{"todos":[{"content":"Plan it","status":"completed","activeForm":"Planning"},{"content":"Write the \"migration\"","status":"in_progress","activeForm":"Writing the migration"},{"content":"Ship it","status":"pending","activeForm":"Shipping"},{"content":"Old","status":"cancelled","activeForm":"Cancelling"}]}}'
+hook '{"session_id":"t1","hook_event_name":"UserPromptSubmit","prompt":"go"}' >/dev/null; sleep 0.5
+hook "$todos" >/dev/null; sleep 0.6
+check "TodoWrite becomes a progress event" "$(lf event)" progress
+check "counts done" "$(lf tasks_done)" 1
+check "counts total, ignoring cancelled" "$(lf tasks_total)" 3
+check "no task text unless opted in" "$(lf tasks_now)" -
+check "agent label defaults to claude" "$(lf agent)" claude
+SCROLLLOCK_TASK_TEXT=1 hook "$todos" >/dev/null; sleep 0.6
+check "opted in: current task" "$(lf tasks_now)" "Writing the migration"
+check "opted in: next task" "$(lf tasks_next)" "Ship it"
+# A second agent labelled by the installer's --agent flag
+TMPDIR="$work" SCROLLLOCK_URL="http://127.0.0.1:$port/" SCROLLLOCK_WRITE_TOKEN=tok sh "$work/hook" --agent codex <<<'{"session_id":"x1","hook_event_name":"UserPromptSubmit","prompt":"go"}' >/dev/null; sleep 0.6
+check "--agent labels the session" "$(lf agent)" codex
 [ "$fail" = 0 ] && echo "all passed" || { echo "SOME FAILED"; exit 1; }

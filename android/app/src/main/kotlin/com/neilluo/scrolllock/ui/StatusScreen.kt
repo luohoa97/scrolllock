@@ -21,6 +21,13 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import com.neilluo.scrolllock.data.AgentStatus
+import com.neilluo.scrolllock.data.AgentSummary
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -60,8 +67,13 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     // screen comes back, and keep it current only while it's on screen: refresh when the answer
     // is missing, locked (no push), or the unlock is about to run out. Nothing runs when it's closed.
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val ctx = LocalContext.current
+    var notificationsOn by remember { mutableStateOf(true) }
+    val agents by AppGraph.state.agents.collectAsStateWithLifecycle(initialValue = emptyList())
+    val settings by AppGraph.settings.flow.collectAsStateWithLifecycle(initialValue = null)
     LaunchedEffect(lifecycle) {
         lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            notificationsOn = ctx.getSystemService(android.app.NotificationManager::class.java)?.areNotificationsEnabled() != false
             AppGraph.state.refresh()
             while (true) {
                 delay(3_000)
@@ -102,9 +114,60 @@ fun StatusScreen(modifier: Modifier = Modifier) {
         Text(Describe.detail(gate), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
         Spacer(Modifier.height(16.dp))
+        if (gate is Gate.Open && agents.isNotEmpty()) AgentsCard(agents, settings?.showTaskText == true)
+        if (!notificationsOn) NotificationsOffCard {
+            ctx.startActivity(
+                android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
         stats?.let { StatsCard(it) }
         Spacer(Modifier.height(8.dp))
         BlockedCard()
+    }
+}
+
+/** Every agent that's working, each with its own progress. Task titles appear only if you've turned that on. */
+@Composable
+private fun AgentsCard(agents: List<AgentStatus>, showText: Boolean) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Working now", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        for (a in agents) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(AgentSummary.one(a), style = MaterialTheme.typography.titleMedium)
+                val total = a.total ?: 0
+                if (total > 0) {
+                    LinearProgressIndicator(progress = { (a.done ?: 0).toFloat() / total }, Modifier.fillMaxWidth())
+                }
+                a.now?.takeIf { showText && it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                a.next?.takeIf { showText && it.isNotBlank() }?.let {
+                    Text("Next: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        AgentSummary.rollup(agents)?.takeIf { agents.size > 1 }?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun NotificationsOffCard(onOpen: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.errorContainer).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text("Notifications are off", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+        Text(
+            "ScrollLock's status notification can't show. Turn notifications back on for it.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+        )
+        TextButton(onOpen) { Text("Open notification settings") }
     }
 }
 

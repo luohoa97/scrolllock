@@ -1,5 +1,22 @@
 import { STALE_RELAY_MS } from "./config";
-import type { SessionRow, Status, UnlockConfig } from "./types";
+import type { AgentProgress, SessionRow, Status, UnlockConfig } from "./types";
+
+/** Every working session, newest first, with its agent label and task progress if it has any. */
+function listAgents(active: readonly SessionRow[]): AgentProgress[] {
+  return [...active]
+    .sort((a, b) => b.lastSeen - a.lastSeen)
+    .slice(0, 6)
+    .map((s) => {
+      const has = (s.tasksTotal ?? 0) > 0;
+      return {
+        agent: s.agent ?? "Agent",
+        done: has ? (s.tasksDone ?? 0) : null,
+        total: has ? (s.tasksTotal ?? 0) : null,
+        now: has ? (s.taskNow ?? null) : null,
+        next: has ? (s.taskNext ?? null) : null,
+      };
+    });
+}
 
 const MIN = 60_000;
 
@@ -27,7 +44,7 @@ export function computeStatus(
   );
 
   const relayStale = lastEventAt === null || now - lastEventAt > STALE_RELAY_MS;
-  const base = { lastEventAt, relayStale, serverTime: now };
+  const base = { lastEventAt, relayStale, serverTime: now, agents: [] as AgentProgress[] };
 
   const busy = active.length > 0 || graceful.length > 0;
   let busyLeaseUntil: number | null = null;
@@ -62,6 +79,7 @@ export function computeStatus(
       unlockReason: `claude_busy:${active.length} sessions`,
       since: workingSince,
       leaseUntil: busyLeaseUntil,
+      agents: listAgents(active),
     };
   }
 
@@ -89,5 +107,6 @@ export function computeStatus(
     unlockReason: `my_turn:${minutesLeft}m left`,
     since: lastPrompt,
     leaseUntil: Math.min(busyLeaseUntil ?? windowEnd, windowEnd),
+    agents: listAgents(active),
   };
 }

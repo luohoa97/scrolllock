@@ -34,7 +34,25 @@ const clampInt = (v: unknown, min: number, max: number, fallback: number): numbe
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
 };
 
-/** POST /api/event  {session_id, event, human?, lease_ms?}  (write token) */
+/** tasks_done / tasks_total, and tasks_now only when the sender chose to share text. Bounded and stripped of control characters. */
+const cleanText = (v: unknown, max: number): string | null => {
+  if (typeof v !== "string") return null;
+  // eslint-disable-next-line no-control-regex
+  const t = v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+  return t.length > 0 ? t : null;
+};
+
+function parseTasks(body: Record<string, unknown>): { done: number; total: number; now: string | null; next: string | null } | undefined {
+  if (body.tasks_total === undefined) return undefined;
+  const total = clampInt(body.tasks_total, 0, 999, 0);
+  const done = Math.min(total, clampInt(body.tasks_done, 0, 999, 0));
+  return { done, total, now: cleanText(body.tasks_now, 120), next: cleanText(body.tasks_next, 120) };
+}
+
+/** A short display label such as "claude", "codex" or "my-agent". Anything else is ignored. */
+const parseAgent = (v: unknown): string | null => (typeof v === "string" && /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,23}$/.test(v) ? v : null);
+
+/** POST /api/event  {session_id, event, human?, lease_ms?, agent?, tasks_done?, tasks_total?, tasks_now?, tasks_next?}  (write token) */
 export async function handleEvent(req: Request, d: Deps): Promise<Response> {
   if (!hasToken(req, d.env.WRITE_TOKEN)) return unauthorized();
   const body = await readJson(req);
@@ -46,7 +64,7 @@ export async function handleEvent(req: Request, d: Deps): Promise<Response> {
 
   const now = d.now();
   const leaseMs = body.lease_ms === undefined ? undefined : clampInt(body.lease_ms, MIN_LEASE_MS, MAX_LEASE_MS, LEASE_MS);
-  await applyEvent(d.store, { sessionId, event: event as EventName, human: body.human === true, leaseMs }, now);
+  await applyEvent(d.store, { sessionId, event: event as EventName, human: body.human === true, leaseMs, tasks: parseTasks(body), agent: parseAgent(body.agent) }, now);
   await pushChanges(d.store, d.pusher, now);
   return json({ ok: true });
 }

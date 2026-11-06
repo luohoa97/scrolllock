@@ -12,6 +12,11 @@ interface SessionDb {
   working_since: string | Date | null;
   last_user_prompt_at: string | Date | null;
   last_event: string;
+  agent?: string | null;
+  tasks_done?: number | null;
+  tasks_total?: number | null;
+  task_now?: string | null;
+  task_next?: string | null;
 }
 interface DeviceDb {
   token: string;
@@ -31,6 +36,11 @@ const toSession = (r: SessionDb): SessionRow => ({
   workingSince: ms(r.working_since),
   lastUserPromptAt: ms(r.last_user_prompt_at),
   lastEvent: r.last_event as EventName,
+  agent: r.agent ?? null,
+  tasksDone: r.tasks_done ?? null,
+  tasksTotal: r.tasks_total ?? null,
+  taskNow: r.task_now ?? null,
+  taskNext: r.task_next ?? null,
 });
 const toDevice = (r: DeviceDb): Device => ({
   token: r.token,
@@ -52,12 +62,13 @@ export function createNeonStore(databaseUrl: string): Store {
     },
     async putSession(r) {
       await sql`
-        insert into sessions (session_id, state, last_seen, lease_until, working_since, last_user_prompt_at, last_event)
-        values (${r.sessionId}, ${r.state}, ${iso(r.lastSeen)}, ${iso(r.leaseUntil)}, ${iso(r.workingSince)}, ${iso(r.lastUserPromptAt)}, ${r.lastEvent})
+        insert into sessions (session_id, state, last_seen, lease_until, working_since, last_user_prompt_at, last_event, agent, tasks_done, tasks_total, task_now, task_next)
+        values (${r.sessionId}, ${r.state}, ${iso(r.lastSeen)}, ${iso(r.leaseUntil)}, ${iso(r.workingSince)}, ${iso(r.lastUserPromptAt)}, ${r.lastEvent}, ${r.agent ?? null}, ${r.tasksDone ?? null}, ${r.tasksTotal ?? null}, ${r.taskNow ?? null}, ${r.taskNext ?? null})
         on conflict (session_id) do update set
           state = excluded.state, last_seen = excluded.last_seen, lease_until = excluded.lease_until,
           working_since = excluded.working_since, last_user_prompt_at = excluded.last_user_prompt_at,
-          last_event = excluded.last_event`;
+          last_event = excluded.last_event, agent = excluded.agent, tasks_done = excluded.tasks_done,
+          tasks_total = excluded.tasks_total, task_now = excluded.task_now, task_next = excluded.task_next`;
     },
     async listSessions() {
       const rows = (await sql`select * from sessions`) as SessionDb[];

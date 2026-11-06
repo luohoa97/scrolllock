@@ -5,7 +5,7 @@ import type { Status } from "../lib/types";
 
 const status: Status = {
   working: true, activeSessions: 2, unlockReason: "claude_busy:2 sessions", since: 5, leaseUntil: 99,
-  lastEventAt: 5, relayStale: false, serverTime: 6,
+  lastEventAt: 5, relayStale: false, serverTime: 6, agents: [],
 };
 
 function fakeSa() {
