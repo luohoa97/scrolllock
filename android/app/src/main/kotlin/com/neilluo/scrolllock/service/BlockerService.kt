@@ -204,9 +204,38 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     private var shownAt: Long? = null
 
+    private var focusRequest: android.media.AudioFocusRequest? = null
+
     private fun showOverlay(b: Box, m: OverlayModel) {
-        if (shownAt == null) shownAt = android.os.SystemClock.elapsedRealtime()
+        if (shownAt == null) {
+            shownAt = android.os.SystemClock.elapsedRealtime()
+            takeAudioFocus()
+        }
         overlay.show(b, m)
+    }
+
+    /**
+     * The blur hides a Reel but does not stop its sound. Taking audio focus asks Instagram's player
+     * to pause. Unverified on a real phone: it relies on Instagram honouring the focus loss.
+     */
+    private fun takeAudioFocus() {
+        val am = getSystemService(android.media.AudioManager::class.java) ?: return
+        val req = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build(),
+            )
+            .setOnAudioFocusChangeListener { }
+            .build()
+        if (am.requestAudioFocus(req) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED) focusRequest = req
+    }
+
+    private fun releaseAudioFocus() {
+        val req = focusRequest ?: return
+        focusRequest = null
+        getSystemService(android.media.AudioManager::class.java)?.abandonAudioFocusRequest(req)
     }
 
     /** Hides the overlay and books the time it was up as blocked time. */
@@ -215,6 +244,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             shownAt = null
             val blockedMs = android.os.SystemClock.elapsedRealtime() - start
             AppGraph.scope.launch { AppGraph.stats.addBlocked(blockedMs) }
+            releaseAudioFocus()
         }
         overlay.hide()
     }
