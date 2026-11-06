@@ -23,7 +23,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.neilluo.scrolllock.service.PermissionAlerts
 import com.neilluo.scrolllock.ui.OnboardingScreen
+import com.neilluo.scrolllock.ui.accessibilityEnabled
+import com.neilluo.scrolllock.ui.startSettings
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import com.neilluo.scrolllock.ui.ScrollLockTheme
 import com.neilluo.scrolllock.ui.SettingsScreen
 import com.neilluo.scrolllock.ui.StatusScreen
@@ -37,6 +42,29 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         setContent { ScrollLockTheme { Root() } }
+        coldStart = savedInstanceState == null
+    }
+
+    private var coldStart = false
+
+    /**
+     * Android switches an accessibility service off when its app is force-stopped, and nothing runs afterwards
+     * until the app is opened again. So opening it is the moment to notice: raise the alert, and on a fresh
+     * launch take the user straight to the accessibility screen instead of waiting for them to find the card.
+     */
+    override fun onResume() {
+        super.onResume()
+        val first = coldStart
+        coldStart = false
+        AppGraph.scope.launch(Dispatchers.Main) {
+            if (!AppGraph.settings.current().onboarded) return@launch
+            if (accessibilityEnabled(this@MainActivity)) {
+                PermissionAlerts.accessibilityBack(this@MainActivity)
+            } else {
+                PermissionAlerts.accessibilityOff(this@MainActivity)
+                if (first) startSettings(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+        }
     }
 }
 

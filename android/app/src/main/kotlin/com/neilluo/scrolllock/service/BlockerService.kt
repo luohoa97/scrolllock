@@ -94,7 +94,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             }
         }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected, build 0.1.18")
+        log("service connected, build 0.1.19")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             var settle = 0
