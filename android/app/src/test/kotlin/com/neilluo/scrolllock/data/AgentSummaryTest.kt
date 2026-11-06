@@ -21,11 +21,20 @@ class AgentSummaryTest {
         assertEquals("Claude 1/2 · Claude 1/2 · Claude 1/2 · +2", AgentSummary.short(many))
     }
 
-    @Test fun capsuleIsAsShortAsItCanBe() {
-        assertEquals("Working", AgentSummary.island(emptyList()))
-        assertEquals("Working", AgentSummary.island(listOf(codex)))
-        assertEquals("3/7", AgentSummary.island(listOf(claude)))
-        assertEquals("2 agents", AgentSummary.island(listOf(claude, codex)))
+    @Test fun sessionsThatReportNothingAreMergedNotRepeated() {
+        val three = List(3) { AgentStatus("claude") }
+        assertEquals("3 Claude sessions working", AgentSummary.short(three))
+        assertEquals(listOf("3 Claude sessions working"), AgentSummary.detailLines(three, showText = false))
+        assertEquals(listOf("3 Claude sessions"), AgentSummary.rowText(three))
+        assertEquals("Claude 3/7 · Codex working · 2 Claude sessions working", AgentSummary.short(listOf(claude, codex, AgentStatus("claude"), AgentStatus("claude"))))
+        assertEquals(listOf("Claude 3/7", "Codex"), AgentSummary.rowText(listOf(claude, codex)))
+    }
+
+    @Test fun chipIsAsShortAsItCanBe() {
+        assertEquals("Working", AgentSummary.chip(emptyList()))
+        assertEquals("Working", AgentSummary.chip(listOf(codex)))
+        assertEquals("3/7", AgentSummary.chip(listOf(claude)))
+        assertEquals("2 agents", AgentSummary.chip(listOf(claude, codex)))
     }
 
     @Test fun rollupSumsOnlyAgentsThatReportCounts() {

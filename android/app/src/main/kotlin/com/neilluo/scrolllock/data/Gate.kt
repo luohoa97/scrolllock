@@ -16,6 +16,23 @@ object GateLogic {
     /** Used when an unlocked status arrives without a lease, which the relay never does. */
     const val FALLBACK_LEASE_MS = 90_000L
 
+    /** An answer older than this is a memory, not news: the relay's lease is about this long. */
+    const val FRESH_MS = 10_000L
+
+    /**
+     * A closed gate whose answer is old (or missing) and could well be wrong by now, so it is worth asking the relay
+     * before drawing a lock screen that the answer would then take straight down. False for locks that need no
+     * asking: nothing set up, the relay unreachable, or something waiting on you.
+     */
+    fun unconfirmed(gate: Gate, snapshot: RelaySnapshot?, nowElapsed: Long): Boolean {
+        if (gate !is Gate.Closed) return false
+        return when (gate.reason) {
+            ClosedReason.NoSetup, ClosedReason.RelayUnreachable, ClosedReason.NeedsYou -> false
+            ClosedReason.Checking, ClosedReason.LeaseExpired -> true
+            else -> snapshot == null || nowElapsed - snapshot.receivedElapsed > FRESH_MS
+        }
+    }
+
     fun compute(
         configured: Boolean,
         snapshot: RelaySnapshot?,

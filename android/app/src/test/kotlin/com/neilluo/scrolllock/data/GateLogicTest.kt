@@ -100,4 +100,34 @@ class GateLogicTest {
         assertEquals(ClosedReason.NeedsYou, (gate(working, 1_000, local = true) as Gate.Closed).reason)
         assertTrue(gate(working, 1_000) is Gate.Open)
     }
+
+    private fun unconfirmed(s: RelaySnapshot?, now: Long, failed: Boolean = false, configured: Boolean = true) =
+        GateLogic.unconfirmed(gate(s, now, failed = failed, configured = configured), s, now)
+
+    @Test fun anExpiredLeaseIsAskedAboutBeforeALockIsDrawn() {
+        val snap = RelaySnapshot.fromStatus(status(true, lease = 1_010_000), receivedElapsed = 0)
+        assertTrue(unconfirmed(snap, now = 60_000))
+    }
+
+    @Test fun nothingHeardYetIsAskedAbout() {
+        assertTrue(unconfirmed(null, now = 1_000))
+    }
+
+    @Test fun anOldLockedAnswerIsAskedAboutButAFreshOneIsNot() {
+        val snap = RelaySnapshot.fromStatus(status(false, since = 970_000, reason = "locked:idle"), receivedElapsed = 0)
+        assertTrue(unconfirmed(snap, now = GateLogic.FRESH_MS + 1))
+        assertEquals(false, unconfirmed(snap, now = GateLogic.FRESH_MS - 1))
+    }
+
+    @Test fun anUnlockedGateNeverNeedsAsking() {
+        val snap = RelaySnapshot.fromStatus(status(true, lease = 1_060_000), receivedElapsed = 0)
+        assertEquals(false, unconfirmed(snap, now = 20_000))
+    }
+
+    @Test fun locksThatNeedNoAskingAreDrawnAtOnce() {
+        val snap = RelaySnapshot.fromStatus(status(true, lease = 1_010_000), receivedElapsed = 0)
+        assertEquals(false, unconfirmed(snap, now = 60_000, failed = true)) // relay unreachable
+        assertEquals(false, unconfirmed(null, now = 1_000, configured = false)) // not set up
+        assertEquals(false, GateLogic.unconfirmed(gate(null, 1_000, local = true), null, 1_000)) // something waits on you
+    }
 }

@@ -74,6 +74,9 @@ class StateRepository(
         return GateLogic.compute(s.configured, snapshot.value, fetchFailed.value, now, bypassLeft, localWaiting.value.isNotEmpty())
     }
 
+    /** True when the gate is closed on an answer too old to trust, so the first look should wait for a fresh one. */
+    fun unconfirmedNow(s: Settings): Boolean = GateLogic.unconfirmed(gateNow(s), snapshot.value, elapsed())
+
     suspend fun refresh(): Result<RelayStatus> {
         val s = settings.current()
         if (!s.configured) return Result.failure(IllegalStateException("Relay is not set up"))

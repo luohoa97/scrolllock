@@ -94,13 +94,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        Section("Capsule and notification") {
-            ToggleRow("Show capsule around the camera", s.showCapsule) { on -> scope.launch { AppGraph.settings.setShowCapsule(on) } }
-            Text(
-                "A small capsule at the top while a blocked app is open and Claude is working. Its own drawing, not the phone maker's Magic Capsule.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Section("Notification") {
             val ctx = androidx.compose.ui.platform.LocalContext.current
             if (android.os.Build.VERSION.SDK_INT >= 36) {
                 OutlinedButton(onClick = {
@@ -114,7 +108,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     )
                 }) { Text("Live updates settings") }
                 Text(
-                    "ScrollLock asks the system to show its status as a Live Update chip while Claude is working. Whether your phone draws that as a capsule is up to the phone maker.",
+                    "ScrollLock asks the system to show its status as a Live Update chip while Claude is working. How your phone draws it is up to the phone maker.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

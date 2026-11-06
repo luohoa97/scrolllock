@@ -51,11 +51,15 @@ class BlockerService : AccessibilityService(), OverlayActions {
     )
     private lateinit var overlay: OverlayController
     private lateinit var notifier: StatusNotifier
-    private lateinit var island: StatusIsland
     private lateinit var engine: DetectionEngine
     private var cfg = Settings()
     private var rules = com.neilluo.scrolllock.detect.Rules()
     private var guardPending = false
+
+    /**
+     * Until this elapsed-realtime, a closed gate resting on an old answer is held invisibly instead of drawn. See [beginHold].
+     */
+    private var holdUntil = 0L
 
     private var igVisible = false // some blocked app is on screen
     private var earlyUntil = 0L // elapsed-realtime until which a window-event cover is kept without a readable window
@@ -81,7 +85,6 @@ class BlockerService : AccessibilityService(), OverlayActions {
         serviceInfo = serviceInfo?.apply { flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
         overlay = OverlayController(this, this)
         notifier = StatusNotifier(this)
-        island = StatusIsland(this)
         rules = RulesLoader.load(this)
         engine = DetectionEngine(rules)
         scope.launch { AppGraph.settings.flow.collect { s -> cfg = s } }
@@ -94,7 +97,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             }
         }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected, build 0.1.20")
+        log("service connected, build 0.1.21")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             var settle = 0
@@ -121,7 +124,10 @@ class BlockerService : AccessibilityService(), OverlayActions {
                 override fun onReceive(c: Context?, i: Intent?) {
                     nudges.trySend(Unit)
                     // One look at the relay when the screen comes on, so the notification is right when you pick the phone up.
-                    if (i?.action == Intent.ACTION_USER_PRESENT) scope.launch { AppGraph.state.refresh() }
+                    if (i?.action == Intent.ACTION_USER_PRESENT) {
+                        if (igVisible) beginHold()
+                        scope.launch { AppGraph.state.refresh() }
+                    }
                 }
             }.also {
                 androidx.core.content.ContextCompat.registerReceiver(
@@ -140,6 +146,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
         // waiting for a poll to read the window's content, which on a cold launch can take around a second.
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = event.packageName?.toString()
+            if (pkg == CLAUDE_PACKAGE) claudeWanted = false
             if (pkg != null && pkg in BlockedApps.packages) coverNow(pkg)
         }
         nudges.trySend(Unit)
@@ -172,7 +179,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             // Screen off or lock screen up: nothing the user can use is visible, so nothing to cover (drawing the
             // overlay over the lock screen made it flash). Keep Instagram's state so waking or unlocking
             // straight back into it is covered on the first poll.
-            hideOverlay(); island.hide(); return
+            hideOverlay(); return
         }
         val found = blockedWindow()
         val was = igVisible
@@ -229,6 +236,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     private fun onInstagramFront() {
         log("instagram visible")
+        beginHold()
         frontJobs?.cancel()
         frontJobs = scope.launch {
             launch { AppGraph.state.refresh() }
@@ -328,10 +336,27 @@ class BlockerService : AccessibilityService(), OverlayActions {
     private fun apply() {
         if (!igVisible) { hideOverlay(); announce(AppGraph.state.gateNow(cfg)); return }
         val gate = AppGraph.state.gateNow(cfg)
-        announce(gate)
+        val holding = holdUntil > android.os.SystemClock.elapsedRealtime() && AppGraph.state.unconfirmedNow(cfg)
+        if (!holding) { holdUntil = 0L; announce(gate) }
         if (gate !is Gate.Closed) { hideOverlay(); uncoveredSince = 0L; return }
-        showOverlay(bounds, model(gate))
+        showOverlay(bounds, model(gate), hold = holding)
         backstop()
+    }
+
+    /**
+     * The decision comes from the stored answer and its deadline, synchronously, before anything is drawn:
+     *  - the answer is current and says working: no overlay, ever;
+     *  - the answer is current and says locked, or the relay can't be reached: the lock goes up at once;
+     *  - the answer is old (a lease that ran out while Instagram was closed, or nothing yet): the lock goes up
+     *    *held*, taking touches but not drawn, while the relay is asked. "Working" removes a window nobody saw.
+     *    "Locked", an error, or [HOLD_MS] passing draws it, so the wait can't turn into an open Instagram.
+     * Without this, every time you sent Claude off and then opened Instagram the lock flashed up on a stale
+     * answer and fell away a moment later.
+     */
+    private fun beginHold() {
+        if (HOLD_MS <= 0 || !AppGraph.state.unconfirmedNow(cfg)) { holdUntil = 0L; return }
+        holdUntil = android.os.SystemClock.elapsedRealtime() + HOLD_MS
+        scope.launch { delay(HOLD_MS + 30); apply() }
     }
 
     private var uncoveredSince = 0L
@@ -353,7 +378,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     /**
      * Says where things stand. The notification is always there (shade and lock screen) and lists the agents
-     * working; the island is the same thing in the status bar, only while a blocked app is open. No countdown.
+     * working. No countdown.
      */
     private fun announce(g: Gate) {
         val app = if (igVisible) BlockedApps.packages[blockedPkg] ?: "App" else null
@@ -370,21 +395,12 @@ class BlockerService : AccessibilityService(), OverlayActions {
         }
         val big = if (g is Gate.Open) AgentSummary.detailLines(agents, cfg.showTaskText).joinToString("\n") else ""
         val chip = when {
-            g is Gate.Open -> AgentSummary.island(agents)
+            g is Gate.Open -> AgentSummary.chip(agents)
             g is Gate.Closed && g.reason == ClosedReason.NeedsYou -> "Waiting"
             else -> null
         }
         val publicText = if (g is Gate.Closed && g.reason == ClosedReason.NeedsYou) WaitingSummary.count(waiters.size) else text
         notifier.show(title, text, big, publicText = publicText, chip = chip)
-        when {
-            !cfg.showCapsule -> island.hide()
-            app == null -> island.hide()
-            g is Gate.Closed && g.reason == ClosedReason.NeedsYou -> island.show(app, "Waiting", StatusIsland.Tone.Waiting)
-            g is Gate.Open -> island.show(app, AgentSummary.island(agents), StatusIsland.Tone.Working)
-            g is Gate.Bypass -> island.show(app, "Bypass", StatusIsland.Tone.Waiting)
-            g is Gate.Closed && g.reason == ClosedReason.Checking -> island.show(app, "Checking", StatusIsland.Tone.Waiting)
-            else -> island.hide() // the lock screen says it all
-        }
     }
 
     /**
@@ -426,13 +442,14 @@ class BlockerService : AccessibilityService(), OverlayActions {
     private var focusRequest: android.media.AudioFocusRequest? = null
 
     /** Shows or updates the overlay at once. Blurred if the system allows, a near-opaque scrim if not. */
-    private fun showOverlay(b: Box, m: OverlayModel) {
-        if (shownAt == null) {
+    private fun showOverlay(b: Box, m: OverlayModel, hold: Boolean = false) {
+        // Blocked time and the audio request start when the lock is really drawn, not while it is held.
+        if (!hold && shownAt == null) {
             shownAt = android.os.SystemClock.elapsedRealtime()
             takeAudioFocus()
             log("overlay up (blur=${getSystemService(android.view.WindowManager::class.java).isCrossWindowBlurEnabled})")
         }
-        overlay.show(b, m)
+        overlay.show(b, m, hold = hold)
     }
 
     private fun unmuteMedia() {
@@ -496,10 +513,31 @@ class BlockerService : AccessibilityService(), OverlayActions {
     // OverlayActions
 
     override fun backToClaude() {
-        val launch = packageManager.getLaunchIntentForPackage(CLAUDE_PACKAGE)
-            ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://claude.ai"))
-        runCatching { startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        val launch = (packageManager.getLaunchIntentForPackage(CLAUDE_PACKAGE)
+            ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://claude.ai"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        log("tap: back to Claude (${launch.component?.packageName ?: launch.data})")
+        runCatching { startActivity(launch) }.onFailure { android.util.Log.e("ScrollLock", "back to Claude: startActivity failed", it) }
+        // Some phone makers drop a background launch without an error. If Claude hasn't come to the front shortly,
+        // send the same intent as a PendingIntent that is allowed to start an activity.
+        claudeWanted = true
+        scope.launch {
+            delay(CLAUDE_LAUNCH_CHECK_MS)
+            if (!claudeWanted) return@launch
+            claudeWanted = false
+            log("back to Claude: not in front after ${CLAUDE_LAUNCH_CHECK_MS}ms, trying a PendingIntent")
+            runCatching {
+                val options = if (android.os.Build.VERSION.SDK_INT >= 34) {
+                    android.app.ActivityOptions.makeBasic()
+                        .setPendingIntentCreatorBackgroundActivityStartMode(android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                        .toBundle()
+                } else null
+                android.app.PendingIntent.getActivity(this@BlockerService, 7, launch, android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT, options).send()
+            }.onFailure { android.util.Log.e("ScrollLock", "back to Claude: PendingIntent failed", it) }
+        }
     }
+
+    /** Set when "Back to Claude" is tapped, cleared when a Claude window shows up. */
+    private var claudeWanted = false
 
     override fun bypass() {
         scope.launch {
@@ -512,7 +550,6 @@ class BlockerService : AccessibilityService(), OverlayActions {
     override fun onDestroy() {
         hideOverlay()
         overlay.release()
-        island.hide()
         notifier.clear()
         unmuteMedia()
         screenReceiver?.let { runCatching { unregisterReceiver(it) } }
@@ -523,6 +560,9 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     private companion object {
         const val CLAUDE_PACKAGE = "com.anthropic.claude"
+        const val CLAUDE_LAUNCH_CHECK_MS = 900L
+        /** How long a closed gate on an old answer waits, undrawn, for the relay. Set to 0 to always draw at once. */
+        const val HOLD_MS = 600L
         const val HEARTBEAT_MS = 1_000L
         val SETTLE_MS = longArrayOf(100, 250, 500, 1_000, 2_000, 4_000)
         const val CAPTURE_TIMEOUT_MS = 700L

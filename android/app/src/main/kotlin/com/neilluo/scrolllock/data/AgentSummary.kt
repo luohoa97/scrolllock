@@ -16,15 +16,42 @@ object AgentSummary {
     fun one(a: AgentStatus): String =
         if (hasCounts(a)) "${label(a.agent)} ${a.done ?: 0}/${a.total}" else "${label(a.agent)} working"
 
-    /** For a notification line: up to three agents, then "+N". Empty when nobody is working. */
-    fun short(agents: List<AgentStatus>): String {
-        if (agents.isEmpty()) return ""
-        val shown = agents.take(3).joinToString(" · ") { one(it) }
-        return if (agents.size > 3) "$shown · +${agents.size - 3}" else shown
+    /**
+     * One entry per thing worth naming. A session with a task list stands alone ("Claude 3/7"); sessions of the
+     * same agent that report nothing are merged, so three idle-looking Claude threads read "3 Claude sessions"
+     * instead of "Claude working" three times. [plain] is appended to a single merged entry ("working").
+     */
+    private class Entry(val text: String, val session: AgentStatus?)
+
+    private fun entries(agents: List<AgentStatus>, plain: String): List<Entry> {
+        val seen = mutableSetOf<String>()
+        return buildList {
+            for (a in agents) {
+                if (hasCounts(a)) { add(Entry("${label(a.agent)} ${a.done ?: 0}/${a.total}", a)); continue }
+                val l = label(a.agent)
+                if (!seen.add(l)) continue
+                val n = agents.count { !hasCounts(it) && label(it.agent) == l }
+                add(Entry(if (n > 1) "$n $l sessions$plain" else l + plain, null))
+            }
+        }
     }
 
-    /** For the capsule and the status-bar chip: as short as it can be. "3/7", "2 agents", or "Working". */
-    fun island(agents: List<AgentStatus>): String = when {
+    /** For a notification line: up to three entries, then "+N". Empty when nobody is working. */
+    fun short(agents: List<AgentStatus>): String {
+        val all = entries(agents, " working").map { it.text }
+        if (all.isEmpty()) return ""
+        val shown = all.take(3).joinToString(" · ")
+        return if (all.size > 3) "$shown · +${all.size - 3}" else shown
+    }
+
+    /** For the Status screen's list, where the heading already says "working": names and progress only. */
+    fun rows(agents: List<AgentStatus>): List<AgentStatus?> = entries(agents, "").map { it.session }
+
+    /** The text of one Status screen row. */
+    fun rowText(agents: List<AgentStatus>): List<String> = entries(agents, "").map { it.text }
+
+    /** For the status-bar chip: as short as it can be. "3/7", "2 agents", or "Working". */
+    fun chip(agents: List<AgentStatus>): String = when {
         agents.isEmpty() -> "Working"
         agents.size == 1 && hasCounts(agents[0]) -> "${agents[0].done ?: 0}/${agents[0].total}"
         agents.size == 1 -> "Working"
@@ -42,10 +69,11 @@ object AgentSummary {
 
     /** Expanded notification: one line per agent, with task text only when [showText] and the sender provided it. */
     fun detailLines(agents: List<AgentStatus>, showText: Boolean): List<String> = buildList {
-        for (a in agents) {
-            val now = a.now?.takeIf { showText && it.isNotBlank() }
-            add(if (now != null) "${one(a)} · $now" else one(a))
-            val next = a.next?.takeIf { showText && it.isNotBlank() }
+        for (e in entries(agents, " working")) {
+            val a = e.session
+            val now = a?.now?.takeIf { showText && it.isNotBlank() }
+            add(if (now != null) "${e.text} · $now" else e.text)
+            val next = a?.next?.takeIf { showText && it.isNotBlank() }
             if (next != null) add("   Next: $next")
         }
         rollup(agents)?.takeIf { agents.size > 1 }?.let { add(it) }

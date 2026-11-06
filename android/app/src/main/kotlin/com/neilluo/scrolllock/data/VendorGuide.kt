@@ -26,7 +26,7 @@ object VendorGuide {
                 listOf(
                     "App info, Battery usage: allow background activity, and allow auto-launch if it's listed.",
                     "Open Recents, tap the app's menu, and lock it.",
-                    "For the status-bar capsule: Settings, Notifications, Live Alerts, and turn on Live Updates for ScrollLock if the option is there.",
+                    "For the status-bar chip: Settings, Notifications, Live Alerts, and turn on Live Updates for ScrollLock if the option is there.",
                 ),
                 listOf(
                     "com.coloros.safecenter" to "com.coloros.safecenter.startupapp.StartupAppListActivity",
