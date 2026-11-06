@@ -72,7 +72,7 @@ private fun RelayStep(next: () -> Unit) {
     Text("Connect to your relay", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
     Text("Paste the relay URL and the read token from your Vercel project. The read token only lets this phone ask whether Claude is working.")
     OutlinedTextField(url, { url = it }, label = { Text("Relay URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(token, { token = it }, label = { Text("Read token") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(token, { token = it }, label = { Text("Read token") }, singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(enabled = url.isNotBlank() && token.isNotBlank(), onClick = {
             scope.launch {

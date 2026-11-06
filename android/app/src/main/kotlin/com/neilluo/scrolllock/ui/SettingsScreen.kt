@@ -3,7 +3,15 @@ package com.neilluo.scrolllock.ui
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings as AndroidSettings
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,49 +55,42 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
 
     Column(
-        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Header("Unlock rule")
-        ModeRow("While Claude is working", s.mode == UnlockMode.ClaudeBusy) {
-            scope.launch { AppGraph.settings.setMode(UnlockMode.ClaudeBusy, s.myTurnMinutes, s.graceSeconds) }
-        }
-        ModeRow("While it's my turn (after I prompt)", s.mode == UnlockMode.MyTurn) {
-            scope.launch { AppGraph.settings.setMode(UnlockMode.MyTurn, s.myTurnMinutes, s.graceSeconds) }
-        }
-        if (s.mode == UnlockMode.MyTurn) {
-            LabeledSlider("My-turn window: ${s.myTurnMinutes} min", s.myTurnMinutes.toFloat(), 1f..60f) {
-                scope.launch { AppGraph.settings.setMode(s.mode, it.toInt(), s.graceSeconds) }
+        Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp, top = 8.dp))
+
+        Section("Unlock rule") {
+            ModeRow("While Claude is working", "Open whenever a Claude Code session is busy", s.mode == UnlockMode.ClaudeBusy) {
+                scope.launch { AppGraph.settings.setMode(UnlockMode.ClaudeBusy, s.myTurnMinutes, s.graceSeconds) }
+            }
+            ModeRow("While it's my turn", "Open for a while after you send a prompt", s.mode == UnlockMode.MyTurn) {
+                scope.launch { AppGraph.settings.setMode(UnlockMode.MyTurn, s.myTurnMinutes, s.graceSeconds) }
+            }
+            if (s.mode == UnlockMode.MyTurn) {
+                LabeledSlider("My-turn window", "${s.myTurnMinutes} min", s.myTurnMinutes.toFloat(), 1f..60f) {
+                    scope.launch { AppGraph.settings.setMode(s.mode, it.toInt(), s.graceSeconds) }
+                }
+            }
+            LabeledSlider("Grace after Claude stops", "${s.graceSeconds}s", s.graceSeconds.toFloat(), 0f..60f) {
+                scope.launch { AppGraph.settings.setMode(s.mode, s.myTurnMinutes, it.toInt()) }
             }
         }
-        LabeledSlider("Grace after Claude stops: ${s.graceSeconds}s", s.graceSeconds.toFloat(), 0f..60f) {
-            scope.launch { AppGraph.settings.setMode(s.mode, s.myTurnMinutes, it.toInt()) }
+
+        Section("What gets blocked", note = "Messages are never blocked.") {
+            ToggleRow("Reels", s.blockReels) { scope.launch { AppGraph.settings.setBlocked(it, s.blockExplore) } }
+            ToggleRow("Explore", s.blockExplore) { scope.launch { AppGraph.settings.setBlocked(s.blockReels, it) } }
         }
 
-        HorizontalDivider()
-        Header("What gets blocked")
-        ToggleRow("Reels", s.blockReels) { scope.launch { AppGraph.settings.setBlocked(it, s.blockExplore) } }
-        ToggleRow("Explore", s.blockExplore) { scope.launch { AppGraph.settings.setBlocked(s.blockReels, it) } }
-        Text("Messages are never blocked.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Section("Relay") { RelayEditor(s) }
 
-        HorizontalDivider()
-        Header("Relay")
-        RelayEditor(s)
+        Section("Lockdown") { LockdownSection(s) }
 
-        HorizontalDivider()
-        Header("Lockdown")
-        LockdownSection(s)
-
-        HorizontalDivider()
-        Header("Debug")
-        Text(
-            "If Reels or Explore stop being blocked after an Instagram update, tap this, open the screen that " +
-                "slipped through, and paste the copied dump into an issue. Message text is never included.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        OutlinedButton(onClick = {
-            AppGraph.captureAt = android.os.SystemClock.elapsedRealtime() + 5_000
-        }) { Text("Capture next Instagram screen in 5s") }
+        Section("Debug", note = "If Reels or Explore stop being blocked after an Instagram update, tap this, open the screen that slipped through, and paste the copied dump into an issue. Message text is never included.") {
+            OutlinedButton(onClick = {
+                AppGraph.captureAt = android.os.SystemClock.elapsedRealtime() + 5_000
+            }) { Text("Capture next Instagram screen in 5s") }
+        }
     }
 }
 
@@ -100,7 +101,7 @@ private fun RelayEditor(s: Settings) {
     var token by remember(s.readToken) { mutableStateOf(s.readToken) }
     var result by remember { mutableStateOf<String?>(null) }
     OutlinedTextField(url, { url = it }, label = { Text("Relay URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(token, { token = it }, label = { Text("Read token") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(token, { token = it }, label = { Text("Read token") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(onClick = {
             scope.launch {
@@ -162,29 +163,53 @@ private fun LockdownSection(s: Settings) {
     }
 }
 
-@Composable private fun Header(t: String) = Text(t, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+@Composable
+private fun Section(title: String, note: String? = null, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.surfaceContainer).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        content()
+        if (note != null) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
 
 @Composable
-private fun ModeRow(label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        RadioButton(selected, onClick)
-        Text(label)
+private fun ModeRow(label: String, detail: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().selectable(selected, role = Role.RadioButton, onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RadioButton(selected, onClick = null)
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
 @Composable
 private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label)
-        Switch(checked, onChange)
+    Row(
+        Modifier.fillMaxWidth().toggleable(checked, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+        Switch(checked, onCheckedChange = null)
     }
 }
 
 @Composable
-private fun LabeledSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onDone: (Float) -> Unit) {
+private fun LabeledSlider(label: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>, onDone: (Float) -> Unit) {
     var v by remember(value) { mutableStateOf(value) }
     Column {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+            Text(if (v == value) valueText else v.toInt().toString(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+        }
         Slider(v, { v = it }, valueRange = range, onValueChangeFinished = { onDone(v) })
     }
 }
