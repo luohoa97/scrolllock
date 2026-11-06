@@ -94,7 +94,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             }
         }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected, build 0.1.17")
+        log("service connected, build 0.1.18")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             var settle = 0
@@ -473,7 +473,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
     override fun backToClaude() {
         val launch = packageManager.getLaunchIntentForPackage(CLAUDE_PACKAGE)
             ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://claude.ai"))
-        startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        runCatching { startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 
     override fun bypass() {
