@@ -1,0 +1,9 @@
+{
+  "name": "scrolllock-hooks",
+  "displayName": "ScrollLock hooks",
+  "version": "0.1.0",
+  "description": "Tells your ScrollLock relay when a Claude Code session is working, so your phone knows when to unlock.",
+  "author": { "name": "Neil Luo" },
+  "license": "MIT",
+  "keywords": ["hooks", "focus"]
+}

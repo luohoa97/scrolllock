@@ -1,0 +1,12 @@
+{
+  "name": "scrolllock",
+  "description": "ScrollLock hooks for Claude Code: report when a session is working.",
+  "owner": { "name": "Neil Luo" },
+  "plugins": [
+    {
+      "name": "scrolllock-hooks",
+      "source": "./hooks/plugin",
+      "description": "Tells your ScrollLock relay when a Claude Code session is working."
+    }
+  ]
+}
