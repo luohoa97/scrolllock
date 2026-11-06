@@ -125,7 +125,7 @@ Run these once, in order. `fake-claude` is in `scripts/` (see "Fish helpers").
 5. `fake-claude idle`. About ten seconds later (the grace period) Reels locks again.
 6. Stop sending anything. After about 90 seconds an unlocked phone locks again on its own.
 7. Tap "Back to Claude". The Claude app comes to the front on whatever it was showing. It must not start a new chat.
-8. The lock screen has no bypass button by default. Turn on Settings, Bypass, and "Bypass 5 min" appears. It unlocks for five minutes, and the button is gone for the rest of the day.
+8. The lock screen has no bypass button, and the app has no setting that adds one.
 9. Turn the phone's clock forward an hour. A locked phone stays locked, and a bypass doesn't last longer.
 10. Reels audio stops under the overlay.
 11. Settings, Debug, Capture next Instagram screen in 5s. Open Reels. A toast says the dump was copied.

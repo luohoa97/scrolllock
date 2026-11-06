@@ -56,7 +56,6 @@ class BlockerService : AccessibilityService(), OverlayActions {
             AppGraph.settings.flow.collect { s ->
                 val blockChanged = s.blockReels != cfg.blockReels || s.blockExplore != cfg.blockExplore
                 cfg = s
-                if (!s.bypassEnabled) bypassOk = false
                 if (blockChanged) {
                     policy = ScreenPolicy(blockedSurfaces(s))
                     verdict = Verdict.Undecided

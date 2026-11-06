@@ -11,6 +11,12 @@ data class BypassState(
 )
 
 object BypassPolicy {
+    /**
+     * The bypass is switched off. A setting to turn it on would be the loophole it is meant to
+     * close, since turning it on takes one tap. To bring it back, change this and rebuild.
+     */
+    const val AVAILABLE = false
+
     const val DURATION_MS = 5 * 60_000L
 
     fun dayKey(epochMs: Long, zone: ZoneId = ZoneId.systemDefault()): String =

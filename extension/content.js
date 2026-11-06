@@ -4,7 +4,7 @@
   const Gate = globalThis.ScrollLockGate;
   const Route = globalThis.ScrollLockRoute;
 
-  const DEFAULTS = { relayUrl: "", readToken: "", mode: "claude_busy", minutes: 15, grace: 10, blockReels: true, blockExplore: true, bypassEnabled: false, bypass: null };
+  const DEFAULTS = { relayUrl: "", readToken: "", mode: "claude_busy", minutes: 15, grace: 10, blockReels: true, blockExplore: true, bypass: null };
   let cfg = { ...DEFAULTS };
   let snap = null;
   let fetchFailed = false;
@@ -13,6 +13,9 @@
   let host = null;
   let els = null;
   let pauseTimer = null;
+
+  // Off on purpose: a switch to turn the bypass on would be the loophole. Change and reload to bring it back.
+  const BYPASS_AVAILABLE = false;
 
   const configured = () => !!(cfg.relayUrl && cfg.readToken);
 
@@ -85,7 +88,7 @@
     els.sub.textContent = SUBTITLE[gate.reason] || "Claude isn't working";
     els.time.textContent = gate.elapsedMs != null ? Gate.formatElapsed(gate.elapsedMs) : "";
     els.time.style.display = gate.elapsedMs != null ? "" : "none";
-    els.bypass.style.display = cfg.bypassEnabled && Gate.canBypass(cfg.bypass, Gate.dayKey()) ? "" : "none";
+    els.bypass.style.display = BYPASS_AVAILABLE && Gate.canBypass(cfg.bypass, Gate.dayKey()) ? "" : "none";
     if (!host.isConnected) (document.documentElement || document).appendChild(host);
     if (!pauseTimer) {
       pauseMedia();
@@ -145,7 +148,7 @@
     els = { sub: root.querySelector(".sub"), time: root.querySelector(".time"), bypass: root.querySelector(".bypass") };
     els.bypass.addEventListener("click", () => {
       const today = Gate.dayKey();
-      if (!cfg.bypassEnabled || !Gate.canBypass(cfg.bypass, today)) return;
+      if (!BYPASS_AVAILABLE || !Gate.canBypass(cfg.bypass, today)) return;
       const state = Gate.startBypass(Date.now(), today);
       cfg.bypass = state;
       chrome.storage.local.set({ bypass: state });

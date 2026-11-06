@@ -74,13 +74,13 @@ class StateRepository(
     /** One bypass per calendar day, where "day" comes from the relay's clock when we have it. */
     suspend fun canBypass(): Boolean {
         val s = settings.current()
-        return s.bypassEnabled && BypassPolicy.canUse(s.bypass, today())
+        return BypassPolicy.AVAILABLE && BypassPolicy.canUse(s.bypass, today())
     }
 
     suspend fun startBypass(): Boolean {
         val s = settings.current()
         val today = today()
-        if (!s.bypassEnabled || !BypassPolicy.canUse(s.bypass, today)) return false
+        if (!BypassPolicy.AVAILABLE || !BypassPolicy.canUse(s.bypass, today)) return false
         settings.setBypass(BypassPolicy.start(bootCount(), elapsed(), today))
         stats.addBypass(today)
         return true

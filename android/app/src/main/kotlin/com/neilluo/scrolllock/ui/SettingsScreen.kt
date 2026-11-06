@@ -73,11 +73,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         Text("Messages are never blocked.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         HorizontalDivider()
-        Header("Bypass")
-        ToggleRow("Allow a 5 minute bypass, once a day", s.bypassEnabled) { scope.launch { AppGraph.settings.setBypassEnabled(it) } }
-        Text("Off by default. When it's off the lock screen has no bypass button.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-        HorizontalDivider()
         Header("Relay")
         RelayEditor(s)
 
