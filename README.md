@@ -2,7 +2,7 @@
 
 <!-- Intro goes here. Neil writes this part. -->
 
-Instagram stays blocked unless a Claude Code session is working. Only messages get through. Anything ScrollLock doesn't recognise is blocked too.
+Instagram stays blocked unless a Claude Code session is working. All of it: feed, Reels, Explore and messages. ScrollLock doesn't need to recognise any screen to do this.
 
 | Piece | What it does |
 | --- | --- |
@@ -118,9 +118,9 @@ On the phone:
 
 Run these once, in order. `fake-claude` is in `scripts/` (see "Fish helpers").
 
-1. `fake-claude idle`, then open Instagram, go to Reels. Blur screen appears: "Instagram locked / Claude isn't working / 8s".
-2. Same screen on Explore.
-3. Open Messages. No overlay, and DMs work normally.
+1. `fake-claude idle`, then open Instagram. Blur screen appears at once: "Instagram locked / Claude isn't working / 8s".
+2. Same screen on Reels, Explore and Messages. It stays up (it must not drop after a second).
+3. Leave Instagram for another app. The overlay goes. Come back and it returns.
 4. Back on Reels with the screen still locked, run `fake-claude working`. The overlay lifts within about two seconds (push) or when you reopen Instagram (no push).
 5. `fake-claude idle`. About ten seconds later (the grace period) Reels locks again.
 6. Stop sending anything. After about 90 seconds an unlocked phone locks again on its own.
@@ -131,7 +131,7 @@ Run these once, in order. `fake-claude` is in `scripts/` (see "Fish helpers").
 11. Settings, Debug, Capture next Instagram screen in 5s. Open Reels. A toast says the dump was copied.
 12. With Lockdown on: App info for ScrollLock bounces you to the home screen, and Uninstall is greyed out.
 
-Chrome: with the relay idle, `instagram.com/reels/` shows the same screen and the video stops. `instagram.com/direct/inbox/` is untouched.
+Chrome: with the relay idle, every `instagram.com` page shows the same screen and the video stops. Only the `/accounts/` login pages pass.
 
 Tests that run without a phone:
 
@@ -156,12 +156,12 @@ The Settings guard reads the labels on Settings screens, only while Lockdown is 
 ## What the app can see
 
 - Window changes from every app, to learn when Instagram leaves the front. Only the package name is kept.
-- Instagram's screen structure: view ids, class names, content descriptions, which tab is selected, sizes. Never the text of messages or text fields.
+- Instagram's screen structure, only in the optional messages mode or when you ask for a debug dump: view ids, class names, content descriptions, which tab is selected, sizes. Never the text of messages or text fields.
 - Nothing is sent anywhere except the relay: your read token to ask for status, and your push token to register.
 
-## When Instagram updates and Reels stop being blocked
+## Letting messages through (optional)
 
-Recognising the messages screen depends on Instagram's view ids and labels, which change. Fixing it should not need a rebuild.
+By default the whole app is blocked and no screen detection runs. To let a recognised messages screen through, set `ALLOW_MESSAGES = true` in `BlockerService.kt` and rebuild. That mode depends on Instagram's view ids and labels, which change. Fixing the rules should not need a rebuild.
 
 1. Settings, Debug, **Capture next Instagram screen in 5s**, then open the screen that slipped through. The app copies a dump to the clipboard. Descriptions are redacted except for tabs and the selected item.
 2. Look at the `surface` and `rule` fields. Edit `android/app/src/main/assets/rules.json`.
@@ -174,7 +174,7 @@ Recognising the messages screen depends on Instagram's view ids and labels, whic
 
    A valid file in the app's `files/` folder wins over the bundled one. A broken one is ignored.
 
-The app is default-deny: only a screen it positively recognises as messages is let through, so a stale rule can make it block too much, but never too little. If messages get blocked after an update, the dump is how you fix the DM rules.
+In that mode the app is default-deny: only a screen it positively recognises as messages is let through, so a stale rule can make it block too much, but never too little.
 
 ## Fish helpers
 

@@ -22,14 +22,12 @@ test("matching is case-insensitive and tolerant of empty input", () => {
   assert.equal(R.classify(undefined), "other");
 });
 
-test("only messages and login pages pass", () => {
-  assert.equal(R.isBlocked("/direct/inbox/"), false);
-  assert.equal(R.isBlocked("/direct/t/99/"), false);
+test("only login pages pass", () => {
   assert.equal(R.isBlocked("/accounts/login/"), false);
 });
 
-test("everything else is blocked, including the home feed, posts and profiles", () => {
-  for (const p of ["/", "/reels/", "/explore/", "/p/C1abc/", "/someone/", "/stories/someone/1/", "/unknown/path/"]) {
+test("everything else is blocked, including messages, the home feed, posts and profiles", () => {
+  for (const p of ["/", "/direct/inbox/", "/direct/t/99/", "/reels/", "/explore/", "/p/C1abc/", "/someone/", "/stories/someone/1/", "/unknown/path/"]) {
     assert.equal(R.isBlocked(p), true, p);
   }
 });

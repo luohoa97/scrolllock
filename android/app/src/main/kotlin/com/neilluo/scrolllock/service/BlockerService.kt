@@ -34,7 +34,8 @@ class BlockerService : AccessibilityService(), OverlayActions {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var overlay: OverlayController
     private lateinit var engine: DetectionEngine
-    private var policy = ScreenPolicy()
+    // Messages are blocked too: nothing about Instagram's screens has to be recognised to lock it.
+    private var policy = ScreenPolicy(allowed = if (ALLOW_MESSAGES) setOf(Surface.Dm) else emptySet())
     private var cfg = Settings()
     private val tracker = ForegroundTracker(INSTAGRAM) { ignoredPackages() }
     private var rules = com.neilluo.scrolllock.detect.Rules()
@@ -69,21 +70,30 @@ class BlockerService : AccessibilityService(), OverlayActions {
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 if (cfg.lockdown && pkg in rules.guardPackages) scheduleGuard()
-                if (tracker.onWindowState(pkg)) {
-                    if (tracker.targetInFront) onInstagramFront() else onInstagramGone()
-                } else if (tracker.targetInFront && pkg == INSTAGRAM) {
+                // A popup or overlay from another package can fire this while Instagram is still the
+                // active window. Only believe "Instagram left" if the active window agrees.
+                val leaving = pkg != null && pkg != INSTAGRAM && tracker.targetInFront && pkg !in ignoredPackages()
+                val effective = if (leaving && activePackage() == INSTAGRAM) INSTAGRAM else pkg
+                if (tracker.onWindowState(effective)) {
+                    if (tracker.targetInFront) onInstagramFront() else onInstagramGone("front=$effective")
+                } else if (tracker.targetInFront && effective == INSTAGRAM) {
                     scheduleEvaluate()
                 }
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                if (tracker.targetInFront && pkg == INSTAGRAM) scheduleEvaluate()
+                if (pkg == INSTAGRAM) {
+                    if (tracker.targetInFront) scheduleEvaluate()
+                    // We wrongly thought Instagram had left: Instagram is drawing and is the active window.
+                    else if (activePackage() == INSTAGRAM && tracker.onWindowState(INSTAGRAM)) onInstagramFront()
+                }
             }
         }
     }
 
     private fun onInstagramFront() {
         policy.reset()
-        verdict = Verdict.Undecided
+        verdict = if (ALLOW_MESSAGES) Verdict.Undecided else Verdict.Block
+        log("instagram front")
         frontSince = android.os.SystemClock.elapsedRealtime()
         frontJobs?.cancel()
         frontJobs = scope.launch {
@@ -114,12 +124,20 @@ class BlockerService : AccessibilityService(), OverlayActions {
         scheduleEvaluate()
     }
 
-    private fun onInstagramGone() {
+    private fun onInstagramGone(why: String) {
         frontJobs?.cancel()
         frontJobs = null
         verdict = Verdict.Undecided
+        log("instagram gone ($why)")
         hideOverlay()
     }
+
+    private fun activePackage(): String? = runCatching {
+        val root = rootInActiveWindow ?: return@runCatching null
+        try { root.packageName?.toString() } finally { @Suppress("DEPRECATION") root.recycle() }
+    }.getOrNull()
+
+    private fun log(msg: String) { android.util.Log.i("ScrollLock", msg) }
 
     /** Lockdown: if this Settings screen could remove ScrollLock, send the user home. */
     private fun scheduleGuard() {
@@ -162,12 +180,25 @@ class BlockerService : AccessibilityService(), OverlayActions {
         if (!tracker.targetInFront) return
         val root = rootInActiveWindow ?: return
         try {
-            if (root.packageName?.toString() != INSTAGRAM) return
+            val rootPkg = root.packageName?.toString()
+            if (rootPkg != INSTAGRAM) {
+                // The 1Hz tick lands here, so a missed "left Instagram" event can't leave the overlay up.
+                if (!rootPkg.isNullOrEmpty() && rootPkg !in ignoredPackages() && tracker.onWindowState(rootPkg)) {
+                    onInstagramGone("active=$rootPkg")
+                }
+                return
+            }
+            val capturing = AppGraph.captureAt != 0L
+            if (!ALLOW_MESSAGES && !capturing) {
+                // Blocking everything needs no tree. Only the window's bounds, for sizing the overlay.
+                verdict = Verdict.Block
+            } else {
             val screen = windowManager().currentWindowMetrics.bounds
             val tree = TreeReader.read(root, Box(0, 0, screen.width(), screen.height()))
             val surface = engine.detect(tree)
-            verdict = policy.feed(surface)
+            if (ALLOW_MESSAGES) verdict = policy.feed(surface)
             maybeCapture(tree, surface)
+            }
             val r = android.graphics.Rect()
             root.getBoundsInScreen(r)
             if (r.width() > 0 && r.height() > 0) bounds = Box(r.left, r.top, r.right, r.bottom)
@@ -192,9 +223,9 @@ class BlockerService : AccessibilityService(), OverlayActions {
     private fun apply() {
         if (!tracker.targetInFront) { hideOverlay(); return }
         val gate = AppGraph.state.gateNow(cfg)
-        if (gate !is Gate.Closed) { hideOverlay(); return }
+        if (gate !is Gate.Closed) { log("unlocked ($gate)"); hideOverlay(); return }
         when (verdict) {
-            Verdict.Allow -> hideOverlay()
+            Verdict.Allow -> { log("allowed screen"); hideOverlay() }
             Verdict.Block -> showOverlay(bounds.takeIf { it.area > 0 } ?: fullScreen(), model(gate))
             // Nothing decisive yet. Leave an existing overlay alone, but don't stay open-ended: if we
             // still can't tell where we are after a moment, fail closed.
@@ -294,10 +325,6 @@ class BlockerService : AccessibilityService(), OverlayActions {
         }
     }
 
-    override fun goBack() {
-        performGlobalAction(GLOBAL_ACTION_BACK)
-    }
-
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
@@ -310,6 +337,8 @@ class BlockerService : AccessibilityService(), OverlayActions {
         const val INSTAGRAM = "com.instagram.android"
         const val CLAUDE_PACKAGE = "com.anthropic.claude"
         const val SYSTEM_UI = "com.android.systemui"
+        /** Off: the whole Instagram app is blocked. On: a recognised messages screen gets through. */
+        const val ALLOW_MESSAGES = false
         const val DEBOUNCE_MS = 150L
         const val UNDECIDED_LIMIT_MS = 2_500L
         const val GUARD_DELAY_MS = 350L

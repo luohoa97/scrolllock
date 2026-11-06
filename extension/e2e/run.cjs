@@ -71,10 +71,9 @@ const PAGE = `<!doctype html><title>stub</title><body style="background:linear-g
   const back = await waitFor(overlayUp, 25000);
   check("overlay returns after Claude stops", !!back, back ? `in ${((back - t1) / 1000).toFixed(1)}s` : "never");
 
-  // 4. DMs and normal pages are never blocked, even while idle.
+  // 4. Everything is blocked while idle, messages included.
   await page.goto("https://www.instagram.com/direct/inbox/");
-  await sleep(2500);
-  check("no overlay on /direct/inbox/", !(await overlayUp()));
+  check("messages are blocked too", !!(await waitFor(overlayUp, 4000)));
   await page.goto("https://www.instagram.com/");
   check("the home feed is blocked too (default deny)", !!(await waitFor(overlayUp, 4000)));
 

@@ -28,7 +28,6 @@ data class OverlayModel(
 interface OverlayActions {
     fun backToClaude()
     fun bypass()
-    fun goBack()
 }
 
 /**
@@ -168,13 +167,7 @@ class OverlayController(
         }
         column.addView(claude, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)).apply { topMargin = dp(28) })
 
-        val row = LinearLayout(service).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        val bypass = quiet(service.getString(R.string.overlay_bypass), fg) { actions.bypass() }
-        bypassView = bypass
-        bypass.visibility = if (model.bypassAvailable) View.VISIBLE else View.GONE
-        row.addView(bypass)
-        row.addView(quiet(service.getString(R.string.overlay_back), fg) { actions.goBack() })
-        column.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { topMargin = dp(8) })
+        // Two ways out only: wait here, or go to Claude. No Back button, no bypass button.
 
         return FrameLayout(service).apply {
             setBackgroundColor(scrim)
@@ -203,17 +196,6 @@ class OverlayController(
         isClickable = true
         setOnClickListener { onClick() }
         contentDescription = label
-    }
-
-    private fun quiet(label: String, color: Int, onClick: () -> Unit) = TextView(service).apply {
-        text = label
-        setTextColor(color)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-        gravity = Gravity.CENTER
-        minHeight = dp(44)
-        setPadding(dp(16), 0, dp(16), 0)
-        isClickable = true
-        setOnClickListener { onClick() }
     }
 
     private fun dp(v: Int) = (v * service.resources.displayMetrics.density).toInt()

@@ -12,6 +12,4 @@
     <string name="overlay_relay_down">Can\'t reach Claude\'s status</string>
     <string name="overlay_no_setup">Setup isn\'t finished</string>
     <string name="overlay_back_to_claude">Back to Claude</string>
-    <string name="overlay_bypass">Bypass 5 min</string>
-    <string name="overlay_back">Back</string>
 </resources>

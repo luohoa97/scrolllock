@@ -1,5 +1,5 @@
-// Which part of Instagram is this URL? Default deny: while locked, everything on instagram.com is
-// blocked except messages and the login pages needed to reach them.
+// Which part of Instagram is this URL? Block all: while locked, everything on instagram.com is
+// blocked, messages included. Only the login pages stay reachable so you can sign in.
 (function (root) {
   /** Returns "reels" | "explore" | "dm" | "account" | "other". */
   function classify(pathname) {
@@ -13,7 +13,7 @@
 
   function isBlocked(pathname) {
     const c = classify(pathname);
-    return c !== "dm" && c !== "account";
+    return c !== "account";
   }
 
   const api = { classify, isBlocked };

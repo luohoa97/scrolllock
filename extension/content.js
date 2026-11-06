@@ -1,4 +1,4 @@
-// Blocks Reels and Explore on instagram.com while Claude is idle. Messages are never touched.
+// Blocks all of instagram.com while Claude is idle.
 // Reads only location.pathname, never page content.
 (() => {
   const Gate = globalThis.ScrollLockGate;
@@ -140,7 +140,6 @@
           <div class="sub"></div>
           <div class="time"></div>
           <div class="row">
-            <a class="quiet" href="/direct/inbox/">Messages</a>
             <button class="bypass" type="button">Bypass 5 min</button>
           </div>
         </div>
