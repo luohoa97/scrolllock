@@ -39,7 +39,7 @@ const PAGE = `<!doctype html><title>stub</title><body style="background:linear-g
   await ctx.route("https://www.instagram.com/**", (route) => route.fulfill({ status: 200, contentType: "text/html", body: PAGE }));
 
   let sw = ctx.serviceWorkers()[0] || (await ctx.waitForEvent("serviceworker"));
-  await sw.evaluate((cfg) => chrome.storage.local.set(cfg), { relayUrl, readToken: "test-read-token", mode: "claude_busy", minutes: 15, grace: 10, blockReels: true, blockExplore: true });
+  await sw.evaluate((cfg) => chrome.storage.local.set(cfg), { relayUrl, readToken: "test-read-token", mode: "claude_busy", minutes: 15, grace: 10, blockReels: true, blockExplore: true, bypassEnabled: false });
 
   const page = await ctx.newPage();
   const overlayUp = () => page.evaluate(() => !!document.getElementById("scrolllock-overlay"));
@@ -83,7 +83,11 @@ const PAGE = `<!doctype html><title>stub</title><body style="background:linear-g
   await page.goto("https://www.instagram.com/explore/");
   check("overlay appears on /explore/", !!(await waitFor(overlayUp, 4000)));
 
-  // 6. Bypass lifts it, once.
+  // 6. No bypass button by default; turn it on and it lifts the lock, once.
+  const hasBtn = () => page.evaluate(() => getComputedStyle(document.getElementById("scrolllock-overlay").shadowRoot.querySelector(".bypass")).display !== "none");
+  check("no bypass button by default", !(await hasBtn()));
+  await sw.evaluate(() => chrome.storage.local.set({ bypassEnabled: true }));
+  check("bypass button appears once enabled", !!(await waitFor(hasBtn, 4000)));
   await page.evaluate(() => document.getElementById("scrolllock-overlay").shadowRoot.querySelector(".bypass").click());
   check("bypass lifts the overlay", !!(await waitFor(async () => !(await overlayUp()), 3000)));
   const stored = await sw.evaluate(() => chrome.storage.local.get("bypass"));

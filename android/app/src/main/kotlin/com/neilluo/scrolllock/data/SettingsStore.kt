@@ -24,6 +24,8 @@ data class Settings(
     val blockReels: Boolean = true,
     val blockExplore: Boolean = true,
     val onboarded: Boolean = false,
+    /** Off by default: the 5 minute bypass is a loophole, so it only exists if turned on. */
+    val bypassEnabled: Boolean = false,
     val lockdown: Boolean = false,
     val coolingOffHours: Int = 24,
     val unlockRequest: UnlockRequest? = null,
@@ -46,6 +48,7 @@ class SettingsStore(private val context: Context) {
         val blockReels = booleanPreferencesKey("blockReels")
         val blockExplore = booleanPreferencesKey("blockExplore")
         val onboarded = booleanPreferencesKey("onboarded")
+        val bypassEnabled = booleanPreferencesKey("bypassEnabled")
         val lockdown = booleanPreferencesKey("lockdown")
         val coolingOffHours = intPreferencesKey("coolingOffHours")
         val reqBoot = intPreferencesKey("unlockReqBoot")
@@ -67,6 +70,7 @@ class SettingsStore(private val context: Context) {
             blockReels = p[K.blockReels] ?: true,
             blockExplore = p[K.blockExplore] ?: true,
             onboarded = p[K.onboarded] ?: false,
+            bypassEnabled = p[K.bypassEnabled] ?: false,
             lockdown = p[K.lockdown] ?: false,
             coolingOffHours = p[K.coolingOffHours] ?: 24,
             unlockRequest = p[K.reqElapsed]?.let { UnlockRequest(p[K.reqBoot] ?: 0, it) },
@@ -96,6 +100,7 @@ class SettingsStore(private val context: Context) {
         it[K.blockExplore] = explore
     }
 
+    suspend fun setBypassEnabled(v: Boolean) = context.dataStore.edit { it[K.bypassEnabled] = v }
     suspend fun setOnboarded(v: Boolean) = context.dataStore.edit { it[K.onboarded] = v }
     suspend fun setLockdown(v: Boolean) = context.dataStore.edit { it[K.lockdown] = v }
     suspend fun setCoolingOffHours(h: Int) = context.dataStore.edit { it[K.coolingOffHours] = h.coerceIn(1, 168) }

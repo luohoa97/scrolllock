@@ -47,6 +47,7 @@ class OverlayController(
     private var subtitleView: TextView? = null
     private var elapsedView: TextView? = null
     private var bypassView: TextView? = null
+    private var builtWithBlur = false
 
     val isShowing: Boolean get() = root != null
 
@@ -54,12 +55,16 @@ class OverlayController(
         get() = (service.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
     fun show(bounds: Box, model: OverlayModel) {
-        val existing = root
-        if (existing != null) {
-            update(bounds, model)
-            return
-        }
         val blur = wm.isCrossWindowBlurEnabled
+        if (root != null) {
+            // Blur support can flip while we're up (battery saver, a developer option, thermal limits).
+            // The window flags and scrim are fixed when the window is made, so rebuild if it changed.
+            if (blur != builtWithBlur) removeNow()
+            else {
+                update(bounds, model)
+                return
+            }
+        }
         val lp = WindowManager.LayoutParams(
             bounds.width.coerceAtLeast(1),
             bounds.height.coerceAtLeast(1),
@@ -85,6 +90,7 @@ class OverlayController(
         }
         root = view
         params = lp
+        builtWithBlur = blur
         view.animate().alpha(1f).setDuration(FADE_MS).start()
     }
 
@@ -98,6 +104,14 @@ class OverlayController(
             lp.width = w; lp.height = h; lp.x = bounds.left; lp.y = bounds.top
             try { wm.updateViewLayout(view, lp) } catch (_: Exception) {}
         }
+    }
+
+    private fun removeNow() {
+        val view = root ?: return
+        root = null; params = null
+        titleView = null; subtitleView = null; elapsedView = null; bypassView = null
+        view.animate().cancel()
+        try { wm.removeViewImmediate(view) } catch (_: Exception) {}
     }
 
     fun hide() {
