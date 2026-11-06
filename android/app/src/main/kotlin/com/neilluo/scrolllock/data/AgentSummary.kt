@@ -23,10 +23,11 @@ object AgentSummary {
         return if (agents.size > 3) "$shown · +${agents.size - 3}" else shown
     }
 
-    /** For the island: one agent by name and progress, several as a count. */
-    fun island(agents: List<AgentStatus>): String = when (agents.size) {
-        0 -> "Claude working"
-        1 -> one(agents[0])
+    /** For the capsule and the status-bar chip: as short as it can be. "3/7", "2 agents", or "Working". */
+    fun island(agents: List<AgentStatus>): String = when {
+        agents.isEmpty() -> "Working"
+        agents.size == 1 && hasCounts(agents[0]) -> "${agents[0].done ?: 0}/${agents[0].total}"
+        agents.size == 1 -> "Working"
         else -> "${agents.size} agents"
     }
 

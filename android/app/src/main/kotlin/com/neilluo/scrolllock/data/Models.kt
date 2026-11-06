@@ -15,7 +15,13 @@ data class RelayStatus(
     val serverTime: Long,
     /** Every agent working right now, with its task progress if it reports any. Absent from older relays. */
     val agents: List<AgentStatus> = emptyList(),
+    /** Sessions blocked on you, from the relay. Absent from older relays. */
+    val waiting: List<WaitingStatus> = emptyList(),
 )
+
+/** A session that is blocked on the human. The label (a project name) is there only if its sender opted in. */
+@Serializable
+data class WaitingStatus(val agent: String = "Agent", val reason: String = "other", val label: String? = null)
 
 /** One working agent session. Counts are null until it reports a task list; the titles exist only if its sender opted in. */
 @Serializable
@@ -54,6 +60,7 @@ data class RelaySnapshot(
     /** Server wall-clock time at receipt, used only to pick the calendar day for the bypass limit. */
     val serverTimeAtReceipt: Long,
     val agents: List<AgentStatus> = emptyList(),
+    val waiting: List<WaitingStatus> = emptyList(),
 ) {
     companion object {
         fun fromStatus(s: RelayStatus, receivedElapsed: Long) = RelaySnapshot(
@@ -66,6 +73,7 @@ data class RelaySnapshot(
             receivedElapsed = receivedElapsed,
             serverTimeAtReceipt = s.serverTime,
             agents = s.agents,
+            waiting = s.waiting,
         )
 
         /** FCM data payload: strings only, empty string for null. Returns null if it is malformed. */

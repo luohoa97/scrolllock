@@ -35,6 +35,18 @@ class StateRepository(
     val snapshots: StateFlow<RelaySnapshot?> = snapshot
     val failed: StateFlow<Boolean> = fetchFailed
 
+    /** Things the Claude app's notifications say are waiting on you. Set by the notification listener, in memory only. */
+    private val localWaiting = MutableStateFlow<List<Waiter>>(emptyList())
+    fun setLocalWaiting(list: List<Waiter>) { localWaiting.value = list }
+    val localWaitingFlow: StateFlow<List<Waiter>> = localWaiting
+
+    /** Everyone waiting on you: sessions the relay knows about, and the Claude app's own notifications. */
+    fun waitersNow(showText: Boolean): List<Waiter> {
+        val snap = snapshot.value
+        val fromRelay = if (snap?.reason?.contains("needs_you") == true) snap.waiting.map { Waiter.fromRelay(it, showText) } else emptyList()
+        return fromRelay + localWaiting.value
+    }
+
     /** Agents working as of the last answer. Pushes carry no task data, so a push keeps the list we had while still working. */
     val agents: Flow<List<AgentStatus>> = snapshot.map { it?.agents.orEmpty() }
     fun agentsNow(): List<AgentStatus> = snapshot.value?.agents.orEmpty()
@@ -48,9 +60,9 @@ class StateRepository(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val gate: StateFlow<Gate> = combine(settings.flow, snapshot, fetchFailed, ticker) { s, snap, failed, now ->
+    val gate: StateFlow<Gate> = combine(settings.flow, snapshot, fetchFailed, ticker, localWaiting) { s, snap, failed, now, local ->
         val bypassLeft = BypassPolicy.remainingMs(s.bypass, bootCount(), now)
-        GateLogic.compute(s.configured, snap, failed, now, bypassLeft)
+        GateLogic.compute(s.configured, snap, failed, now, bypassLeft, local.isNotEmpty())
     }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), Gate.Closed(ClosedReason.NoSetup, null))
 
     /** Milliseconds since the last successful push or fetch, or null if there has been none. */
@@ -59,7 +71,7 @@ class StateRepository(
     fun gateNow(s: Settings): Gate {
         val now = elapsed()
         val bypassLeft = BypassPolicy.remainingMs(s.bypass, bootCount(), now)
-        return GateLogic.compute(s.configured, snapshot.value, fetchFailed.value, now, bypassLeft)
+        return GateLogic.compute(s.configured, snapshot.value, fetchFailed.value, now, bypassLeft, localWaiting.value.isNotEmpty())
     }
 
     suspend fun refresh(): Result<RelayStatus> {
@@ -76,7 +88,12 @@ class StateRepository(
     fun applyPush(data: Map<String, String>): Boolean {
         val snap = RelaySnapshot.fromPush(data, elapsed()) ?: return false
         val prev = snapshot.value
-        snapshot.value = if (snap.working && prev?.working == true) snap.copy(agents = prev.agents) else snap
+        snapshot.value = when {
+            snap.working && prev?.working == true -> snap.copy(agents = prev.agents)
+            // A push says someone is waiting but not who; keep the names we had if they were waiting before.
+            snap.reason.contains("needs_you") && prev?.reason?.contains("needs_you") == true -> snap.copy(waiting = prev.waiting)
+            else -> snap
+        }
         fetchFailed.value = false
         return true
     }

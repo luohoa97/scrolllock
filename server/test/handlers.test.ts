@@ -177,3 +177,51 @@ describe("agents and task progress", () => {
     expect((await status(deps)).agents[0]!).toMatchObject({ done: null, total: null });
   });
 });
+
+describe("waiting on you", () => {
+  const status = async (deps: Deps) => (await (await handleStatus(get("/api/status", "r-token"), deps)).json()) as Status;
+  const ev = (deps: Deps, body: Record<string, unknown>) => handleEvent(post("/api/event", { session_id: "a", ...body }, "w-token"), deps);
+
+  it("locks even while agents are working, and says who is waiting", async () => {
+    const { deps } = mk();
+    await ev(deps, { event: "working", human: true, agent: "claude", lease_ms: 60_000 });
+    expect((await status(deps)).working).toBe(true);
+    await handleEvent(post("/api/event", { session_id: "coord", event: "needs_you", agent: "coordinator", reason: "question", label: "Organisely" }, "w-token"), deps);
+    const st = await status(deps);
+    expect(st.working).toBe(false);
+    expect(st.unlockReason).toBe("locked:needs_you");
+    expect(st.needsYou).toBe(1);
+    expect(st.waiting).toEqual([{ agent: "coordinator", reason: "question", label: "Organisely" }]);
+  });
+
+  it("clears on resolved, on the human's next prompt, on a tool that then ran, and when the turn ends", async () => {
+    for (const clear of [{ event: "resolved" }, { event: "working", human: true }, { event: "tool_done" }, { event: "idle" }, { event: "end" }]) {
+      const { deps } = mk();
+      await ev(deps, { event: "working", human: true, lease_ms: 60_000 });
+      await ev(deps, { event: "needs_you", reason: "permission" });
+      expect((await status(deps)).working).toBe(false);
+      await ev(deps, { ...clear, lease_ms: 60_000 });
+      expect((await status(deps)).needsYou).toBe(0);
+    }
+  });
+
+  it("survives beats and heartbeats, which fire before the permission is answered", async () => {
+    const { deps } = mk();
+    await ev(deps, { event: "working", human: true, lease_ms: 60_000 });
+    await ev(deps, { event: "needs_you", reason: "permission" });
+    await ev(deps, { event: "beat", lease_ms: 60_000 });
+    await ev(deps, { event: "heartbeat", lease_ms: 60_000 });
+    await ev(deps, { event: "progress", tasks_done: 1, tasks_total: 2 });
+    expect((await status(deps)).needsYou).toBe(1);
+  });
+
+  it("stops locking after the expiry, and keeps label text to short clean strings", async () => {
+    const { deps, clock } = mk();
+    await ev(deps, { event: "working", human: true, lease_ms: 120_000 });
+    await ev(deps, { event: "needs_you", label: "x".repeat(300) });
+    expect((await status(deps)).waiting[0]!.label).toHaveLength(60);
+    clock.t += 3 * 60 * 60_000 + 1;
+    expect((await status(deps)).needsYou).toBe(0);
+  });
+});
+

@@ -24,6 +24,7 @@ object Describe {
             ClosedReason.LeaseExpired -> "Claude isn't responding."
             ClosedReason.PromptWindowExpired -> "Claude isn't responding."
             ClosedReason.NoEvents -> "No Claude activity seen yet."
+            ClosedReason.NeedsYou -> "Something is waiting on you."
             ClosedReason.Idle -> "Claude isn't working."
         }
     }

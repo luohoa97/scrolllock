@@ -24,7 +24,6 @@ class StatusIsland(private val service: AccessibilityService) {
 
     private val wm = service.getSystemService(WindowManager::class.java)
     private var root: LinearLayout? = null
-    private var nameView: TextView? = null
     private var statusView: TextView? = null
     private var dotBg: GradientDrawable? = null
     private var shownKey = ""
@@ -35,7 +34,6 @@ class StatusIsland(private val service: AccessibilityService) {
         shownKey = key
         val v = root
         if (v != null) {
-            nameView?.text = app
             statusView?.text = status
             dotBg?.setColor(tone.color)
             return
@@ -45,7 +43,7 @@ class StatusIsland(private val service: AccessibilityService) {
 
     fun hide() {
         val view = root ?: return
-        root = null; nameView = null; statusView = null; dotBg = null; shownKey = ""
+        root = null; statusView = null; dotBg = null; shownKey = ""
         view.animate().cancel()
         view.animate().alpha(0f).setDuration(120).withEndAction {
             try { wm.removeViewImmediate(view) } catch (_: Exception) {}
@@ -67,21 +65,20 @@ class StatusIsland(private val service: AccessibilityService) {
             dotBg = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(tone.color) }
             it.background = dotBg
         }
-        val name = label(app, fg).also { nameView = it }
-        val st = label(status, 0xCCFFFFFF.toInt()).also { statusView = it }
+        val st = label(status, fg).also { statusView = it }
 
         val row = LinearLayout(service).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable().apply { setColor(Color.BLACK); cornerRadius = 1000f }
-            setPadding(dp(14), 0, dp(14), 0)
-            addView(dot, LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginEnd = dp(6) })
-            addView(name)
+            setPadding(dp(12), 0, dp(12), 0)
+            // Dot on the left, the camera hole in the middle, one short word on the right. Nothing wider than that,
+            // so it never reaches the status icons.
+            addView(dot, LinearLayout.LayoutParams(dp(8), dp(8)))
             if (cut != null) {
-                // The hole sits between the two halves.
-                addView(View(service), LinearLayout.LayoutParams(cut.width() + dp(12), 1))
+                addView(View(service), LinearLayout.LayoutParams(cut.width() + dp(10), 1))
             } else {
-                addView(View(service), LinearLayout.LayoutParams(dp(8), 1))
+                addView(View(service), LinearLayout.LayoutParams(dp(6), 1))
             }
             addView(st)
         }

@@ -80,6 +80,8 @@ curl -sS -X POST $SCROLLLOCK_URL/api/event \
 | `progress` | the agent updates its task list | renews the lease, and records the counts below |
 | `tool_done` | a tool finishes | renews the lease |
 | `beat` | every few seconds while busy | renews the lease, but only if the session is already working, so a stray one can't unlock anything |
+| `needs_you` | the agent is blocked on you (a permission prompt, a question) | **locks, even while other sessions work**, until you answer. Add `"reason":"permission"` (or `question`, `input`, `other`) and, if you opt in, `"label":"project name"` |
+| `resolved` | you answered | clears that session's wait |
 | `idle` | the turn stops | locks after the 10 second grace period |
 | `end` | the session closes | locks at once |
 
@@ -132,6 +134,15 @@ set -Ux SCROLLLOCK_TASK_TEXT 1
 ```
 
 Titles then go to your relay, its database and the phone. Firebase pushes never carry them. On the phone, Settings, "Show task titles" must also be on before they appear, and they never appear on the lock screen: that shows a public version with names and counts only. In your own calls, send `tasks_now` and `tasks_next` (up to 120 characters each).
+
+## Waiting on you
+
+If any agent is waiting on you, the blocked apps stay locked, even while other agents are working, and the lock screen says who is waiting instead of "Claude isn't working". Two sources feed it:
+
+- **Hooks.** The shipped hook sends `needs_you` for Claude Code's `Notification` event (permission prompts, questions) and Codex's `PermissionRequest`, and clears it when the tool finishes, when you send a new prompt, or when the turn ends. It is the same relay call as above if your own tool wants to send it. A wait that is never cleared expires after 3 hours.
+- **The Claude app on your phone.** Settings, "Waiting on you", Notification access. ScrollLock then reads notifications from the Claude app only (never other apps), keeps them in memory, and sends nothing anywhere. This is the one that covers coordinators, projects and accounts you can't hook. Sideloaded apps start with this switch greyed out: App info, three dots, Allow restricted settings. The words it matches are a first guess: use "Capture Claude notifications" in Settings to copy real ones into an issue.
+
+Project or thread names appear only if you turn on "Show task titles" and your sender opted in. The lock screen only ever says how many things are waiting.
 
 ## If it isn't working
 

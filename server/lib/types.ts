@@ -2,8 +2,15 @@ export type Mode = "claude_busy" | "my_turn";
 export type SessionState = "working" | "idle";
 
 /** What the hooks send. `human` is true when the prompt looks typed by a person. */
-export type EventName = "hello" | "working" | "heartbeat" | "beat" | "progress" | "tool_done" | "idle" | "end";
-export const EVENT_NAMES: readonly EventName[] = ["hello", "working", "heartbeat", "beat", "progress", "tool_done", "idle", "end"];
+export type EventName = "hello" | "working" | "heartbeat" | "beat" | "progress" | "needs_you" | "resolved" | "tool_done" | "idle" | "end";
+export const EVENT_NAMES: readonly EventName[] = ["hello", "working", "heartbeat", "beat", "progress", "needs_you", "resolved", "tool_done", "idle", "end"];
+
+/** A session that is blocked on the human. */
+export interface WaitingItem {
+  agent: string;
+  reason: string;
+  label: string | null;
+}
 
 /** One working agent session. Counts are null until it reports a task list; the titles exist only if its sender opted in to sharing text. */
 export interface AgentProgress {
@@ -28,6 +35,10 @@ export interface SessionRow {
   tasksTotal?: number | null;
   taskNow?: string | null;
   taskNext?: string | null;
+  /** Set while this session is blocked on the human. `needsReason` is a category (permission, question, other), never text. */
+  needsYouAt?: number | null;
+  needsReason?: string | null;
+  needsLabel?: string | null;
 }
 
 export interface UnlockConfig {
@@ -51,6 +62,10 @@ export interface Status {
   serverTime: number;
   /** Every session working right now, newest first: which agent, and its task progress if it reports any. Never sent in pushes. */
   agents: AgentProgress[];
+  /** How many sessions are waiting on the human right now. While it is above zero the phone stays locked. */
+  needsYou: number;
+  /** Who is waiting, newest first (up to 6). `label` exists only if the sender opted in to sharing text. */
+  waiting: WaitingItem[];
 }
 
 export interface Device {

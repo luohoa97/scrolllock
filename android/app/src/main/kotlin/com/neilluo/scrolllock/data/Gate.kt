@@ -1,7 +1,7 @@
 package com.neilluo.scrolllock.data
 
 /** [Checking] is "nothing heard yet": a fresh process before its first answer, not a verdict about Claude. */
-enum class ClosedReason { Idle, LeaseExpired, RelayUnreachable, PromptWindowExpired, NoEvents, NoSetup, Checking }
+enum class ClosedReason { Idle, LeaseExpired, RelayUnreachable, PromptWindowExpired, NoEvents, NoSetup, Checking, NeedsYou }
 
 /** The one answer the rest of the app needs: is Instagram open right now, and why not. */
 sealed interface Gate {
@@ -22,7 +22,13 @@ object GateLogic {
         lastFetchFailed: Boolean,
         nowElapsed: Long,
         bypassRemainingMs: Long,
+        /** The Claude app has a notification that needs an answer from you. Phone-side, no relay involved. */
+        localWaiting: Boolean = false,
     ): Gate {
+        // Something is waiting on you: locked, whatever else is working, and a bypass doesn't override it.
+        if (localWaiting || snapshot?.reason?.contains("needs_you") == true) {
+            return Gate.Closed(ClosedReason.NeedsYou, snapshot?.let { (it.sinceAgoMs ?: 0) + (nowElapsed - it.receivedElapsed).coerceAtLeast(0) })
+        }
         if (bypassRemainingMs > 0) return Gate.Bypass(bypassRemainingMs)
         if (!configured) return Gate.Closed(ClosedReason.NoSetup, null)
         if (snapshot == null) return Gate.Closed(if (lastFetchFailed) ClosedReason.RelayUnreachable else ClosedReason.Checking, null)

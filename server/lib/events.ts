@@ -7,7 +7,7 @@ import type { EventName, SessionRow, Store } from "./types";
  */
 export async function applyEvent(
   store: Store,
-  ev: { sessionId: string; event: EventName; human?: boolean; leaseMs?: number; agent?: string | null; tasks?: { done: number; total: number; now: string | null; next: string | null } },
+  ev: { sessionId: string; event: EventName; human?: boolean; leaseMs?: number; agent?: string | null; reason?: string | null; label?: string | null; tasks?: { done: number; total: number; now: string | null; next: string | null } },
   now: number,
 ): Promise<SessionRow> {
   const prev = await store.getSession(ev.sessionId);
@@ -22,6 +22,10 @@ export async function applyEvent(
     taskNow: prev?.taskNow ?? null,
     taskNext: prev?.taskNext ?? null,
   };
+  // A pending "waiting on you" survives beats, heartbeats and progress, and ends when the human answers:
+  // a typed prompt, a tool that then ran (a permission was granted), the turn ending, or an explicit resolved.
+  const keepNeeds = { needsYouAt: prev?.needsYouAt ?? null, needsReason: prev?.needsReason ?? null, needsLabel: prev?.needsLabel ?? null };
+  const noNeeds = { needsYouAt: null, needsReason: null, needsLabel: null };
 
   let row: SessionRow;
   switch (ev.event) {
@@ -47,6 +51,7 @@ export async function applyEvent(
         lastUserPromptAt: ev.human ? now : (prev?.lastUserPromptAt ?? null),
         lastEvent: "working",
         ...carry,
+        ...(ev.human ? noNeeds : keepNeeds),
       };
       break;
     case "heartbeat":
@@ -59,11 +64,12 @@ export async function applyEvent(
         lastUserPromptAt: prev?.lastUserPromptAt ?? null,
         lastEvent: "heartbeat",
         ...carry,
+        ...keepNeeds,
       };
       break;
     case "tool_done":
       if (!prev || !wasWorking) return prev ?? emptyIdle(ev.sessionId, now); // late PostToolUse after Stop: ignore
-      row = { ...prev, ...carry, lastSeen: now, leaseUntil: now + lease, lastEvent: "tool_done" };
+      row = { ...prev, ...carry, ...noNeeds, lastSeen: now, leaseUntil: now + lease, lastEvent: "tool_done" };
       break;
     case "beat":
       // A keep-alive from the hook's background loop. It only extends a session that is already
@@ -86,6 +92,14 @@ export async function applyEvent(
         taskNext: ev.tasks?.next ?? null,
       };
       break;
+    case "needs_you":
+      // Blocked on the human. Works for a session that isn't working too (the coordinator), and changes nothing else about it.
+      row = { ...(prev ?? emptyIdle(ev.sessionId, now)), ...carry, lastSeen: now, needsYouAt: now, needsReason: ev.reason ?? "other", needsLabel: ev.label ?? null, lastEvent: "needs_you" };
+      break;
+    case "resolved":
+      if (!prev) return emptyIdle(ev.sessionId, now);
+      row = { ...prev, ...carry, ...noNeeds, lastSeen: now, lastEvent: "resolved" };
+      break;
     case "idle":
     case "end":
       row = {
@@ -96,6 +110,7 @@ export async function applyEvent(
         workingSince: null,
         lastUserPromptAt: prev?.lastUserPromptAt ?? null,
         lastEvent: ev.event,
+        ...noNeeds,
         ...(ev.event === "idle" ? carry : { agent: carry.agent, tasksDone: null, tasksTotal: null, taskNow: null, taskNext: null }),
       };
       break;

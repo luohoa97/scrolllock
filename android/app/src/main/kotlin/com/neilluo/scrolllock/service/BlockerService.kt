@@ -13,6 +13,7 @@ import android.view.accessibility.AccessibilityEvent
 import com.neilluo.scrolllock.AppGraph
 import com.neilluo.scrolllock.R
 import com.neilluo.scrolllock.data.ClosedReason
+import com.neilluo.scrolllock.data.WaitingSummary
 import com.neilluo.scrolllock.data.Gate
 import com.neilluo.scrolllock.data.Settings
 import com.neilluo.scrolllock.data.TimeFormat
@@ -85,7 +86,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             }
         }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected, build 0.1.14")
+        log("service connected, build 0.1.15")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             var settle = 0
@@ -127,8 +128,33 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
+        // A blocked app's window just appeared. The event already names its package, so cover it now instead of
+        // waiting for a poll to read the window's content, which on a cold launch can take around a second.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val pkg = event.packageName?.toString()
+            if (pkg != null && pkg in BlockedApps.packages) coverNow(pkg)
+        }
         nudges.trySend(Unit)
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && cfg.lockdown && event.packageName?.toString() in rules.guardPackages) scheduleGuard()
+    }
+
+    /**
+     * Fail closed on launch: put the cover up from the event alone, full screen and with no fade, using the last
+     * known state (no answer yet counts as locked). The next poll fixes the bounds, or removes it if the app
+     * turns out not to be on screen.
+     */
+    private fun coverNow(pkg: String) {
+        if (getSystemService(PowerManager::class.java)?.isInteractive == false) return
+        val was = igVisible
+        igVisible = true
+        blockedPkg = pkg
+        if (!was) {
+            val screen = windowManager().currentWindowMetrics.bounds
+            bounds = Box(0, 0, screen.width(), screen.height())
+            onInstagramFront()
+            reassertBlur()
+        }
+        apply()
     }
 
     /** One look at the screen. Decides whether Instagram is visible, then whether to cover it. */
@@ -142,7 +168,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
         val was = igVisible
         igVisible = found != null
         if (found != null) bounds = found
-        if (igVisible && !was) onInstagramFront()
+        if (igVisible && !was) { onInstagramFront(); reassertBlur() }
         if (!igVisible && was) onInstagramGone()
         apply()
         captureIfAsked()
@@ -263,6 +289,22 @@ class BlockerService : AccessibilityService(), OverlayActions {
         }
     }
 
+    /**
+     * A blocked app that was swiped away and is launched again can come up with the overlay's blur missing,
+     * leaving only the tint. Re-adding the window a moment after launch, once the app has drawn, restores it.
+     */
+    private var blurJob: Job? = null
+    private fun reassertBlur() {
+        blurJob?.cancel()
+        blurJob = scope.launch {
+            for (wait in longArrayOf(250, 600, 1200)) {
+                delay(wait)
+                if (!igVisible) return@launch
+                overlay.rebuild()
+            }
+        }
+    }
+
     /** One place decides whether the overlay is up: Instagram visible and the gate closed. */
     private fun apply() {
         if (!igVisible) { hideOverlay(); announce(AppGraph.state.gateNow(cfg)); return }
@@ -280,16 +322,27 @@ class BlockerService : AccessibilityService(), OverlayActions {
         val app = if (igVisible) BlockedApps.packages[blockedPkg] ?: "App" else null
         val agents = if (g is Gate.Open) AppGraph.state.agentsNow() else emptyList()
         val summary = AgentSummary.short(agents)
+        val waiters = if (g is Gate.Closed && g.reason == ClosedReason.NeedsYou) AppGraph.state.waitersNow(cfg.showTaskText) else emptyList()
         val (title, text) = when {
+            g is Gate.Closed && g.reason == ClosedReason.NeedsYou ->
+                (app?.let { "$it locked" } ?: "Apps locked") to ("Waiting on you" + WaitingSummary.names(waiters).takeIf { it.isNotEmpty() }?.let { ": $it" }.orEmpty())
             g is Gate.Open -> (app?.let { "In $it" } ?: "Apps unlocked") to summary.ifEmpty { "Claude is working" }
             g is Gate.Bypass -> (app?.let { "In $it" } ?: "Bypass is on") to "Bypass is on"
             g is Gate.Closed && g.reason == ClosedReason.Checking -> (app?.let { "In $it" } ?: "ScrollLock") to "Checking Claude…"
             else -> (app?.let { "$it locked" } ?: "Apps locked") to "Claude isn't working"
         }
         val big = if (g is Gate.Open) AgentSummary.detailLines(agents, cfg.showTaskText).joinToString("\n") else ""
-        notifier.show(title, text, big, publicText = text)
+        val chip = when {
+            g is Gate.Open -> AgentSummary.island(agents)
+            g is Gate.Closed && g.reason == ClosedReason.NeedsYou -> "Waiting"
+            else -> null
+        }
+        val publicText = if (g is Gate.Closed && g.reason == ClosedReason.NeedsYou) WaitingSummary.count(waiters.size) else text
+        notifier.show(title, text, big, publicText = publicText, chip = chip)
         when {
+            !cfg.showCapsule -> island.hide()
             app == null -> island.hide()
+            g is Gate.Closed && g.reason == ClosedReason.NeedsYou -> island.show(app, "Waiting", StatusIsland.Tone.Waiting)
             g is Gate.Open -> island.show(app, AgentSummary.island(agents), StatusIsland.Tone.Working)
             g is Gate.Bypass -> island.show(app, "Bypass", StatusIsland.Tone.Waiting)
             g is Gate.Closed && g.reason == ClosedReason.Checking -> island.show(app, "Checking", StatusIsland.Tone.Waiting)
@@ -302,13 +355,14 @@ class BlockerService : AccessibilityService(), OverlayActions {
      * information arrives (a push, a fetch, a setting) and once more when an unlock is due to end.
      */
     private suspend fun keepNotificationCurrent() {
-        combine(AppGraph.settings.flow, AppGraph.state.snapshots, AppGraph.state.failed) { _, _, _ -> }.collectLatest {
+        combine(AppGraph.settings.flow, AppGraph.state.snapshots, AppGraph.state.failed, AppGraph.state.localWaitingFlow) { _, _, _, _ -> }.collectLatest {
             val g = AppGraph.state.gateNow(cfg)
-            announce(g)
+            // A waiting item changes the gate itself, so a blocked app on screen may need its overlay raised or lifted.
+            if (igVisible) apply() else announce(g)
             val left = when (g) { is Gate.Open -> g.remainingMs; is Gate.Bypass -> g.remainingMs; else -> 0L }
             if (left > 0) {
                 delay(left + 200)
-                announce(AppGraph.state.gateNow(cfg))
+                if (igVisible) apply() else announce(AppGraph.state.gateNow(cfg))
             }
         }
     }
@@ -320,11 +374,14 @@ class BlockerService : AccessibilityService(), OverlayActions {
                 ClosedReason.RelayUnreachable -> R.string.overlay_relay_down
                 ClosedReason.NoSetup -> R.string.overlay_no_setup
                 ClosedReason.Checking -> R.string.overlay_checking
+                ClosedReason.NeedsYou -> R.string.overlay_needs_you
                 else -> R.string.overlay_claude_idle
             },
         ),
-        elapsed = g.elapsedMs?.let { TimeFormat.elapsed(it) }.orEmpty(),
-        bypassAvailable = AppGraph.state.canBypassNow(cfg),
+        // Waiting on you: who is waiting. Otherwise how long it's been locked.
+        elapsed = if (g.reason == ClosedReason.NeedsYou) WaitingSummary.names(AppGraph.state.waitersNow(cfg.showTaskText))
+        else g.elapsedMs?.let { TimeFormat.elapsed(it) }.orEmpty(),
+        bypassAvailable = g.reason != ClosedReason.NeedsYou && AppGraph.state.canBypassNow(cfg),
     )
 
     private var shownAt: Long? = null
@@ -417,6 +474,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     override fun onDestroy() {
         hideOverlay()
+        overlay.release()
         island.hide()
         notifier.clear()
         unmuteMedia()
