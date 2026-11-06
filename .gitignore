@@ -1,0 +1,18 @@
+.env
+.env.local
+node_modules/
+.vercel/
+.DS_Store
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/google-services.json
+*.jks
+*.keystore
+*.apk
+*.aab
+.idea/
+*.iml
