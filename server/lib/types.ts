@@ -2,8 +2,8 @@ export type Mode = "claude_busy" | "my_turn";
 export type SessionState = "working" | "idle";
 
 /** What the hooks send. `human` is true when the prompt looks typed by a person. */
-export type EventName = "hello" | "working" | "heartbeat" | "tool_done" | "idle" | "end";
-export const EVENT_NAMES: readonly EventName[] = ["hello", "working", "heartbeat", "tool_done", "idle", "end"];
+export type EventName = "hello" | "working" | "heartbeat" | "beat" | "tool_done" | "idle" | "end";
+export const EVENT_NAMES: readonly EventName[] = ["hello", "working", "heartbeat", "beat", "tool_done", "idle", "end"];
 
 /** All times are epoch milliseconds. */
 export interface SessionRow {

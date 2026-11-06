@@ -69,7 +69,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
         engine = DetectionEngine(rules)
         scope.launch { AppGraph.settings.flow.collect { s -> cfg = s } }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected, build 0.1.10")
+        log("service connected, build 0.1.11")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             var settle = 0
@@ -172,16 +172,26 @@ class BlockerService : AccessibilityService(), OverlayActions {
             launch { AppGraph.state.refresh() }
             // The gate only needs a clock tick while Instagram is on screen.
             launch { AppGraph.state.gate.collect { apply() } }
-            // Safety net: if no push has arrived for two minutes, ask the relay directly. Without
-            // Firebase there are no pushes at all, so while Instagram is up and locked, ask every
-            // few seconds so an unlock lands without pressing refresh.
+            // Asks the relay directly when it needs to, only while a blocked app is on screen:
+            //  - locked and no Firebase (so no pushes): every few seconds, so an unlock lands at once;
+            //  - unlocked and the lease is about to run out: leases can be a few seconds, and a push
+            //    only says "working" once, so ask again before it ends;
+            //  - nothing heard for two minutes: a safety refresh.
             launch {
                 val pushless = !AppGraph.fcm.firebaseAvailable()
+                var lastTry = 0L
                 while (true) {
-                    delay(if (pushless) PUSHLESS_POLL_MS else SAFETY_FETCH_MS)
+                    delay(1_000)
+                    val now = android.os.SystemClock.elapsedRealtime()
                     val age = AppGraph.state.ageMs()
-                    val locked = AppGraph.state.gateNow(cfg) is Gate.Closed
-                    if (age == null || age > STALE_PUSH_MS || (pushless && locked)) AppGraph.state.refresh()
+                    val g = AppGraph.state.gateNow(cfg)
+                    val due = age == null || age > STALE_PUSH_MS ||
+                        (g is Gate.Closed && pushless) ||
+                        (g is Gate.Open && g.remainingMs < REFRESH_AHEAD_MS)
+                    if (due && now - lastTry >= MIN_REFRESH_GAP_MS) {
+                        lastTry = now
+                        AppGraph.state.refresh()
+                    }
                 }
             }
         }
@@ -356,8 +366,8 @@ class BlockerService : AccessibilityService(), OverlayActions {
         val SETTLE_MS = longArrayOf(100, 250, 500, 1_000, 2_000, 4_000)
         const val CAPTURE_TIMEOUT_MS = 700L
         const val GUARD_DELAY_MS = 350L
-        const val SAFETY_FETCH_MS = 30_000L
-        const val PUSHLESS_POLL_MS = 3_000L
+        const val REFRESH_AHEAD_MS = 5_000L
+        const val MIN_REFRESH_GAP_MS = 2_500L
         const val STALE_PUSH_MS = 120_000L
     }
 }

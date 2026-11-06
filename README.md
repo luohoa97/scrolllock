@@ -87,7 +87,11 @@ set -Ux SCROLLLOCK_WRITE_TOKEN <the write token>
 
 Restart Claude Code. The installer needs `python3` or `node` to edit `settings.json`; it won't touch a file that isn't valid JSON.
 
-What the hook sends: a session id, the event name, and whether a human typed the prompt. Never prompt text.
+What the hook sends: a session id, the event name, whether a human typed the prompt, and a lease length. Never prompt text.
+
+**How "working" stays true.** Each Claude event (a prompt, a tool starting or finishing) tells the relay the session is working for the next 10 seconds, which is the *lease*. While a turn runs, the hook also starts a tiny detached loop that renews the lease every 3 seconds, so a session that dies, loses its container or is killed locks within about 10 seconds. The loop prints nothing, never touches Claude's context, and stops on Stop, on session end, when Claude's own process is gone, or after 2 minutes with no Claude activity (10 minutes while a tool is running). The phone and extension ask the relay again just before a lease runs out, so they stay unlocked while Claude works. An interrupted turn (Esc) fires no Stop event, so it locks when that 2 minutes passes.
+
+Fresh cloud containers get the new hook from the setup script. If you installed an older one, run the install line again (it is safe to repeat) or paste the updated `hooks/cloud-setup-snippet.sh`.
 
 ### 5. Android app
 
@@ -139,7 +143,7 @@ Tests that run without a phone:
 cd server;    pnpm install; pnpm test
 cd android;   ./gradlew :app:testDebugUnitTest
 cd extension; npm test          # plus: node e2e/run.cjs   (real Chromium, fake relay)
-bash hooks/test/run.sh; bash hooks/test/install_test.sh
+bash hooks/test/run.sh; bash hooks/test/install_test.sh; bash hooks/test/beat_test.sh
 ```
 
 ## Lockdown
