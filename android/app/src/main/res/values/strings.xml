@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ScrollLock</string>
+    <string name="accessibility_service_label">ScrollLock</string>
+    <string name="accessibility_service_description">Blocks Instagram Reels and Explore while Claude is not working. Messages stay usable. It reads screen structure only while Instagram is open, and never message text.</string>
+    <string name="tile_label">ScrollLock</string>
+    <string name="widget_description">Shows whether Instagram is locked.</string>
+    <string name="admin_description">Lockdown: stops ScrollLock being uninstalled without the 24 hour wait.</string>
+    <string name="admin_disable_warning">Turning this off lets you uninstall ScrollLock. Use Request unlock in the app so the 24 hour wait applies.</string>
+</resources>

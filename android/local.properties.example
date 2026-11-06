@@ -1,0 +1,4 @@
+# Copy to local.properties (gitignored). Android Studio writes sdk.dir for you.
+sdk.dir=/path/to/Android/Sdk
+# Relay used by the debug build's "fill in my relay" shortcut. Optional.
+# scrolllock.relayUrl=https://your-relay.vercel.app
