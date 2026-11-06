@@ -58,6 +58,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
     private var guardPending = false
 
     private var igVisible = false // some blocked app is on screen
+    private var earlyUntil = 0L // elapsed-realtime until which a window-event cover is kept without a readable window
     private var blockedPkg = ""
     private var bounds = Box(0, 0, 0, 0)
     private var frontJobs: Job? = null
@@ -86,7 +87,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             }
         }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected, build 0.1.15")
+        log("service connected, build 0.1.16")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             var settle = 0
@@ -147,6 +148,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
         if (getSystemService(PowerManager::class.java)?.isInteractive == false) return
         val was = igVisible
         igVisible = true
+        earlyUntil = android.os.SystemClock.elapsedRealtime() + EARLY_COVER_MS
         blockedPkg = pkg
         if (!was) {
             val screen = windowManager().currentWindowMetrics.bounds
@@ -166,7 +168,8 @@ class BlockerService : AccessibilityService(), OverlayActions {
         }
         val found = blockedWindow()
         val was = igVisible
-        igVisible = found != null
+        // A cover raised from a window event stands for a moment even if the window's content can't be read yet.
+        igVisible = found != null || android.os.SystemClock.elapsedRealtime() < earlyUntil
         if (found != null) bounds = found
         if (igVisible && !was) { onInstagramFront(); reassertBlur() }
         if (!igVisible && was) onInstagramGone()
@@ -231,9 +234,11 @@ class BlockerService : AccessibilityService(), OverlayActions {
                     val now = android.os.SystemClock.elapsedRealtime()
                     val age = AppGraph.state.ageMs()
                     val g = AppGraph.state.gateNow(cfg)
+                    // While unlocked, ask every couple of seconds: nothing pushes "Claude stopped", and waiting until
+                    // the lease is nearly out let Instagram run on for most of it after the agent had finished.
                     val due = age == null || age > STALE_PUSH_MS ||
                         (g is Gate.Closed && pushless) ||
-                        (g is Gate.Open && g.remainingMs < REFRESH_AHEAD_MS)
+                        g is Gate.Open
                     if (due && now - lastTry >= MIN_REFRESH_GAP_MS) {
                         lastTry = now
                         AppGraph.state.refresh()
@@ -491,7 +496,8 @@ class BlockerService : AccessibilityService(), OverlayActions {
         const val CAPTURE_TIMEOUT_MS = 700L
         const val GUARD_DELAY_MS = 350L
         const val REFRESH_AHEAD_MS = 5_000L
-        const val MIN_REFRESH_GAP_MS = 2_500L
+        const val EARLY_COVER_MS = 1_500L
+        const val MIN_REFRESH_GAP_MS = 1_800L
         const val STALE_PUSH_MS = 120_000L
     }
 }
