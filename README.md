@@ -1,6 +1,12 @@
 # ScrollLock
 
-<!-- Intro goes here. Neil writes this part. -->
+ScrollLock keeps Instagram, YouTube, TikTok, Snapchat and Facebook locked on your Android phone unless an AI agent is working for you.
+
+Waiting on an agent is when most people pick up the phone. ScrollLock turns that around: the apps open while Claude Code, Codex, Gemini CLI or anything with hooks is busy, and lock when it stops. If an agent is waiting on you for an approval or an answer, the apps stay locked and the lock screen says who is waiting. The fastest way back to Instagram is to go and answer it.
+
+Small hooks on your agents report to a relay you host (Vercel and Neon). The phone asks the relay when a blocked app comes to the front and covers it with a blurred screen when the answer is no. There is also a Chrome extension for Instagram on desktop. Hooks send a session id, an event name and task counts, never your prompts. Task titles and project names stay off unless you turn them on at both ends.
+
+It is early software. Android only, built and tested on one phone (an Honor on Android 16), debug builds so far. Some phone makers kill background services, so after installing, open Settings, Keep it running. It is a commitment device, not a security tool: anyone with a computer and `adb` can remove it. Reports from other phones are very welcome. MIT licensed.
 
 Instagram, YouTube, TikTok, Snapchat and Facebook stay blocked unless a Claude Code session is working. The whole app is blurred, muted and unusable, with no screen detection to get wrong. Discord is left alone. The list is `BLOCKED` in `BlockerService.kt`; check the package names against your phone with `adb shell pm list packages`.
 

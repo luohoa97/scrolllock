@@ -69,11 +69,20 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     val ctx = LocalContext.current
     var notificationsOn by remember { mutableStateOf(true) }
+    var gaps by remember { mutableStateOf(emptyList<com.neilluo.scrolllock.data.PermissionHealth.Gap>()) }
     val agents by AppGraph.state.agents.collectAsStateWithLifecycle(initialValue = emptyList())
     val settings by AppGraph.settings.flow.collectAsStateWithLifecycle(initialValue = null)
     LaunchedEffect(lifecycle) {
         lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
             notificationsOn = ctx.getSystemService(android.app.NotificationManager::class.java)?.areNotificationsEnabled() != false
+            // Checked every time the screen comes back, so a revoked permission is asked for again, not once.
+            gaps = com.neilluo.scrolllock.data.PermissionHealth.gaps(
+                accessibilityOn = accessibilityEnabled(ctx),
+                notificationsOn = notificationsOn,
+                batteryExempt = ctx.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(ctx.packageName),
+                notificationAccessOn = androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName),
+                notificationAccessWanted = com.neilluo.scrolllock.service.PermissionAlerts.listenerWanted(ctx),
+            )
             AppGraph.state.refresh()
             while (true) {
                 delay(3_000)
@@ -122,13 +131,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
             val who = AppGraph.state.waitersNow(settings?.showTaskText == true)
             WaitingCard(if (local.isEmpty() && snap == null) emptyList() else who)
         }
-        if (!notificationsOn) NotificationsOffCard {
-            ctx.startActivity(
-                android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
-                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }
+        for (g in gaps) GapCard(g) { ctx.startActivity(intentFor(ctx, g.need).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
         stats?.let { StatsCard(it) }
         Spacer(Modifier.height(8.dp))
         BlockedCard()
@@ -181,19 +184,29 @@ private fun WaitingCard(waiters: List<com.neilluo.scrolllock.data.Waiter>) {
     }
 }
 
+internal fun intentFor(ctx: android.content.Context, need: com.neilluo.scrolllock.data.PermissionHealth.Need): android.content.Intent = when (need) {
+    com.neilluo.scrolllock.data.PermissionHealth.Need.Accessibility -> android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+    com.neilluo.scrolllock.data.PermissionHealth.Need.NotificationAccess -> android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+    com.neilluo.scrolllock.data.PermissionHealth.Need.Notifications -> android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+    com.neilluo.scrolllock.data.PermissionHealth.Need.Battery -> android.content.Intent(
+        android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${ctx.packageName}"),
+    )
+}
+
+/** Something the lock needs has been switched off. Shown until it's back. */
 @Composable
-private fun NotificationsOffCard(onOpen: () -> Unit) {
+private fun GapCard(g: com.neilluo.scrolllock.data.PermissionHealth.Gap, onOpen: () -> Unit) {
+    val loud = g.need == com.neilluo.scrolllock.data.PermissionHealth.Need.Accessibility
+    val bg = if (loud) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainer
+    val fg = if (loud) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.errorContainer).padding(20.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(bg).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text("Notifications are off", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
-        Text(
-            "ScrollLock's status notification can't show. Turn notifications back on for it.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onErrorContainer,
-        )
-        TextButton(onOpen) { Text("Open notification settings") }
+        Text(g.title, style = MaterialTheme.typography.titleMedium, color = fg)
+        Text(g.detail, style = MaterialTheme.typography.bodyMedium, color = fg)
+        TextButton(onOpen) { Text(g.action) }
     }
 }
 

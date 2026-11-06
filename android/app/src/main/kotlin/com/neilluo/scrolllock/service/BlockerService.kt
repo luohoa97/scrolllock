@@ -67,8 +67,15 @@ class BlockerService : AccessibilityService(), OverlayActions {
     private var dismissReceiver: BroadcastReceiver? = null
     private var weMuted = false
 
+    /** The user switched the accessibility service off (or the system dropped it): nothing is blocked now, so say so. */
+    override fun onUnbind(intent: Intent?): Boolean {
+        PermissionAlerts.accessibilityOff(this)
+        return super.onUnbind(intent)
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
+        PermissionAlerts.accessibilityBack(this)
         // Window lists need this flag. Setting it here as well as in the XML covers an updated install
         // whose service config the system hasn't re-read.
         serviceInfo = serviceInfo?.apply { flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
@@ -87,7 +94,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             }
         }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected, build 0.1.16")
+        log("service connected, build 0.1.17")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             var settle = 0
