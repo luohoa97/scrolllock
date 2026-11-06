@@ -32,8 +32,13 @@ interface OverlayActions {
 
 /**
  * The block screen: an accessibility-overlay window sized to the Instagram window, blurring what is
- * behind it. It is not focusable, so the system Back key still reaches Instagram. Plain views, not
+ * behind it. It is not focusable, so the system Back key still reaches Instagram, but it is touchable:
+ * it takes every tap (so nothing reaches the Reel underneath) and its own buttons work. Plain views, not
  * Compose, because an overlay window has no lifecycle owner to hang a composition on.
+ *
+ * It can also be raised *held*: in the window, taking touches, but fully transparent and unblurred. That is
+ * for the moment between a blocked app opening and the phone knowing whether Claude is still working, so an
+ * answer of "unlocked" removes a window nobody ever saw instead of flashing a lock screen.
  */
 class OverlayController(
     private val service: AccessibilityService,
@@ -47,6 +52,7 @@ class OverlayController(
     private var elapsedView: TextView? = null
     private var bypassView: TextView? = null
     private var builtWithBlur = false
+    private var held = false
     private var lastBounds: Box? = null
     private var lastModel: OverlayModel? = null
 
@@ -83,6 +89,9 @@ class OverlayController(
 
     val isShowing: Boolean get() = root != null
 
+    /** Up and taking touches, but not drawn yet. */
+    val isHeld: Boolean get() = root != null && held
+
     private val night: Boolean
         get() = (service.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
@@ -91,7 +100,7 @@ class OverlayController(
      * (battery saver, a vendor power mode, the "disable window blurs" developer option, tunneled
      * video) the overlay is a near-opaque scrim instead, so the app is never left showing.
      */
-    fun show(bounds: Box, model: OverlayModel, animate: Boolean = false) {
+    fun show(bounds: Box, model: OverlayModel, animate: Boolean = false, hold: Boolean = false) {
         lastBounds = bounds; lastModel = model
         val blur = wm.isCrossWindowBlurEnabled
         if (root != null) {
@@ -100,6 +109,7 @@ class OverlayController(
             if (blur != builtWithBlur) removeNow()
             else {
                 update(bounds, model)
+                if (held && !hold) reveal()
                 return
             }
         }
@@ -117,11 +127,11 @@ class OverlayController(
             gravity = Gravity.TOP or Gravity.START
             x = bounds.left
             y = bounds.top
-            if (blur) blurBehindRadius = BLUR_RADIUS
+            if (blur && !hold) blurBehindRadius = BLUR_RADIUS
             title = "ScrollLock"
         }
         val view = build(model, blur)
-        view.alpha = if (animate) 0f else 1f
+        view.alpha = if (animate || hold) 0f else 1f
         try {
             wm.addView(view, lp)
         } catch (_: Exception) {
@@ -130,9 +140,25 @@ class OverlayController(
         root = view
         params = lp
         builtWithBlur = blur
-        android.util.Log.i("ScrollLock", "overlay window added blur=$blur bounds=${bounds.width}x${bounds.height} animate=$animate")
+        held = hold
+        android.util.Log.i("ScrollLock", "overlay window added blur=$blur bounds=${bounds.width}x${bounds.height} animate=$animate hold=$hold")
+        if (hold) return
         if (animate) view.animate().alpha(1f).setDuration(FADE_MS).start()
         if (blur) for (wait in BLUR_REFRESH_MS) view.postDelayed({ if (root === view) refreshBlur() }, wait)
+    }
+
+    /** Draws a held window, at once: the answer was "locked", and a lock that eases in is a lock that leaks. */
+    private fun reveal() {
+        val view = root ?: return
+        val lp = params ?: return
+        held = false
+        android.util.Log.i("ScrollLock", "overlay revealed")
+        view.alpha = 1f
+        if (builtWithBlur) {
+            lp.blurBehindRadius = BLUR_RADIUS
+            try { wm.updateViewLayout(view, lp) } catch (_: Exception) {}
+            for (wait in BLUR_REFRESH_MS) view.postDelayed({ if (root === view) refreshBlur() }, wait)
+        }
     }
 
     private fun update(bounds: Box, model: OverlayModel) {
@@ -149,7 +175,7 @@ class OverlayController(
 
     private fun removeNow() {
         val view = root ?: return
-        root = null; params = null
+        root = null; params = null; held = false
         titleView = null; subtitleView = null; elapsedView = null; bypassView = null
         view.animate().cancel()
         android.util.Log.i("ScrollLock", "overlay window removed (rebuild for blur change)")
@@ -161,6 +187,7 @@ class OverlayController(
         val view = root ?: return
         root = null
         params = null
+        held = false
         titleView = null; subtitleView = null; elapsedView = null; bypassView = null
         view.animate().cancel()
         android.util.Log.i("ScrollLock", "overlay window hiding")
@@ -220,7 +247,8 @@ class OverlayController(
 
         return FrameLayout(service).apply {
             setBackgroundColor(scrim)
-            isClickable = true // swallow touches so nothing reaches the Reel underneath
+            // Takes every tap, so nothing reaches the Reel underneath, and lets the buttons inside it work.
+            isClickable = true
             addView(column, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         }
     }

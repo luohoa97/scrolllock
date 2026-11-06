@@ -12,9 +12,15 @@ object Describe {
         is Gate.Closed -> if (g.reason == ClosedReason.Checking) "Checking Claude…" else "Apps are locked"
     }
 
-    fun detail(g: Gate): String = when (g) {
-        is Gate.Open -> buildString {
-            append(if (g.sessions == 1) "Claude is working" else "${g.sessions} Claude sessions are working")
+    /**
+     * The line under the headline. While unlocked and the relay has told us who is working, the list below names
+     * them, so this stays quiet instead of saying the same thing twice. Without that list it says what it knows.
+     */
+    fun detail(g: Gate, agentsListed: Boolean = false): String = when (g) {
+        is Gate.Open -> when {
+            agentsListed -> ""
+            g.sessions == 1 -> "Claude is working"
+            else -> "${g.sessions} sessions are working"
         }
         is Gate.Bypass -> "Bypass is on. One a day."
         is Gate.Closed -> when (g.reason) {

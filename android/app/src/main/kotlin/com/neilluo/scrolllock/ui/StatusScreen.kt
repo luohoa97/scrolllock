@@ -120,7 +120,8 @@ fun StatusScreen(modifier: Modifier = Modifier) {
         }
         Spacer(Modifier.height(16.dp))
         Text(Describe.headline(gate), style = MaterialTheme.typography.headlineMediumEmphasized, fontWeight = FontWeight.SemiBold)
-        Text(Describe.detail(gate), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val detail = Describe.detail(gate, agentsListed = agents.isNotEmpty())
+        if (detail.isNotEmpty()) Text(detail, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
         Spacer(Modifier.height(16.dp))
         if (gate is Gate.Open && agents.isNotEmpty()) AgentsCard(agents, settings?.showTaskText == true)
@@ -146,15 +147,17 @@ private fun AgentsCard(agents: List<AgentStatus>, showText: Boolean) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Working now", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        for (a in agents) {
+        val sessions = AgentSummary.rows(agents)
+        val names = AgentSummary.rowText(agents)
+        for ((i, a) in sessions.withIndex()) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(AgentSummary.one(a), style = MaterialTheme.typography.titleMedium)
-                val total = a.total ?: 0
-                if (total > 0) {
+                Text(names[i], style = MaterialTheme.typography.titleMedium)
+                val total = a?.total ?: 0
+                if (a != null && total > 0) {
                     LinearProgressIndicator(progress = { (a.done ?: 0).toFloat() / total }, Modifier.fillMaxWidth())
                 }
-                a.now?.takeIf { showText && it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                a.next?.takeIf { showText && it.isNotBlank() }?.let {
+                a?.now?.takeIf { showText && it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                a?.next?.takeIf { showText && it.isNotBlank() }?.let {
                     Text("Next: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

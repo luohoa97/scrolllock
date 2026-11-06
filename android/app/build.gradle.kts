@@ -25,8 +25,8 @@ android {
         applicationId = "com.neilluo.scrolllock"
         minSdk = 31
         targetSdk = 36
-        versionCode = 20
-        versionName = "0.1.20"
+        versionCode = 21
+        versionName = "0.1.21"
     }
 
     signingConfigs {
