@@ -1,0 +1,116 @@
+{
+ "_note": "SYNTHETIC: shaped from memory of Instagram's accessibility tree, not captured from a device. Replace with a real dump (Settings > Dump tree) before trusting.",
+ "package": "com.instagram.android",
+ "screen": [
+  0,
+  0,
+  1080,
+  2400
+ ],
+ "nodes": [
+  {
+   "id": "android:id/content",
+   "cls": "android.widget.FrameLayout",
+   "desc": null,
+   "selected": false,
+   "depth": 0,
+   "b": [
+    0,
+    0,
+    1080,
+    2400
+   ]
+  },
+  {
+   "id": "com.instagram.android:id/clips_viewer_view_pager",
+   "cls": "androidx.viewpager2.widget.ViewPager2",
+   "desc": null,
+   "selected": false,
+   "depth": 2,
+   "b": [
+    0,
+    0,
+    1080,
+    2200
+   ]
+  },
+  {
+   "id": "com.instagram.android:id/clips_viewer_container",
+   "cls": "android.widget.FrameLayout",
+   "desc": null,
+   "selected": false,
+   "depth": 2,
+   "b": [
+    0,
+    0,
+    1080,
+    2400
+   ]
+  },
+  {
+   "id": "com.instagram.android:id/feed_tab",
+   "cls": "android.widget.FrameLayout",
+   "desc": "Home",
+   "selected": false,
+   "depth": 4,
+   "b": [
+    0,
+    2200,
+    216,
+    2400
+   ]
+  },
+  {
+   "id": "com.instagram.android:id/search_tab",
+   "cls": "android.widget.FrameLayout",
+   "desc": "Search and Explore",
+   "selected": false,
+   "depth": 4,
+   "b": [
+    216,
+    2200,
+    432,
+    2400
+   ]
+  },
+  {
+   "id": "com.instagram.android:id/creation_tab",
+   "cls": "android.widget.FrameLayout",
+   "desc": "Create",
+   "selected": false,
+   "depth": 4,
+   "b": [
+    432,
+    2200,
+    648,
+    2400
+   ]
+  },
+  {
+   "id": "com.instagram.android:id/clips_tab",
+   "cls": "android.widget.FrameLayout",
+   "desc": "Reels",
+   "selected": true,
+   "depth": 4,
+   "b": [
+    648,
+    2200,
+    864,
+    2400
+   ]
+  },
+  {
+   "id": "com.instagram.android:id/profile_tab",
+   "cls": "android.widget.FrameLayout",
+   "desc": "Profile",
+   "selected": false,
+   "depth": 4,
+   "b": [
+    864,
+    2200,
+    1080,
+    2400
+   ]
+  }
+ ]
+}

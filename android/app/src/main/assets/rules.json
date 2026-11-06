@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "packageName": "com.instagram.android",
+  "guardPackages": [
+    "com.android.settings",
+    "com.google.android.packageinstaller",
+    "com.android.packageinstaller",
+    "com.samsung.android.packageinstaller"
+  ],
+  "rules": [
+    {
+      "name": "dm-thread",
+      "surface": "Dm",
+      "priority": 10,
+      "all": [ { "idContains": "direct_thread" } ]
+    },
+    {
+      "name": "dm-inbox",
+      "surface": "Dm",
+      "priority": 11,
+      "all": [ { "idContains": "direct_inbox" } ]
+    },
+    {
+      "name": "reels-viewer",
+      "surface": "Reels",
+      "priority": 20,
+      "all": [ { "idContains": "clips_viewer" } ]
+    },
+    {
+      "name": "reels-tab-selected-by-label",
+      "surface": "Reels",
+      "priority": 21,
+      "all": [ { "descEquals": "Reels", "selected": true } ]
+    },
+    {
+      "name": "reels-tab-selected-by-id",
+      "surface": "Reels",
+      "priority": 22,
+      "all": [ { "idContains": "clips_tab", "selected": true } ]
+    },
+    {
+      "name": "explore-tab-selected-by-label",
+      "surface": "Explore",
+      "priority": 30,
+      "all": [ { "descContains": "Search and explore", "selected": true } ]
+    },
+    {
+      "name": "explore-tab-selected-by-id",
+      "surface": "Explore",
+      "priority": 31,
+      "all": [ { "idContains": "search_tab", "selected": true } ]
+    },
+    {
+      "name": "home-tab-selected-by-label",
+      "surface": "Home",
+      "priority": 40,
+      "all": [ { "descEquals": "Home", "selected": true } ]
+    },
+    {
+      "name": "home-tab-selected-by-id",
+      "surface": "Home",
+      "priority": 41,
+      "all": [ { "idContains": "feed_tab", "selected": true } ]
+    },
+    {
+      "name": "profile-tab-selected",
+      "surface": "Profile",
+      "priority": 50,
+      "all": [ { "descEquals": "Profile", "selected": true } ]
+    }
+  ]
+}
