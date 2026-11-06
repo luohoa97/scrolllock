@@ -94,7 +94,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             }
         }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected, build 0.1.19")
+        log("service connected, build 0.1.20")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             var settle = 0
@@ -152,7 +152,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
      * turns out not to be on screen.
      */
     private fun coverNow(pkg: String) {
-        if (getSystemService(PowerManager::class.java)?.isInteractive == false) return
+        if (screenUnusable()) return
         val was = igVisible
         igVisible = true
         earlyUntil = android.os.SystemClock.elapsedRealtime() + EARLY_COVER_MS
@@ -168,8 +168,9 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     /** One look at the screen. Decides whether Instagram is visible, then whether to cover it. */
     private fun pollOnce() {
-        if (getSystemService(PowerManager::class.java)?.isInteractive == false) {
-            // Screen off: nothing is visible, nothing to cover. Keep Instagram's state so waking
+        if (screenUnusable()) {
+            // Screen off or lock screen up: nothing the user can use is visible, so nothing to cover (drawing the
+            // overlay over the lock screen made it flash). Keep Instagram's state so waking or unlocking
             // straight back into it is covered on the first poll.
             hideOverlay(); island.hide(); return
         }
@@ -183,6 +184,11 @@ class BlockerService : AccessibilityService(), OverlayActions {
         apply()
         captureIfAsked()
     }
+
+    /** True while the screen is off or the lock screen is showing: a blocked app may still be listed behind it. */
+    private fun screenUnusable(): Boolean =
+        getSystemService(PowerManager::class.java)?.isInteractive == false ||
+            getSystemService(android.app.KeyguardManager::class.java)?.isKeyguardLocked == true
 
     /** The bounds of the largest visible window of a blocked app, or null if none is on screen. */
     private fun blockedWindow(): Box? {
@@ -303,7 +309,8 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     /**
      * A blocked app that was swiped away and is launched again can come up with the overlay's blur missing,
-     * leaving only the tint. Re-adding the window a moment after launch, once the app has drawn, restores it.
+     * leaving only the tint. Asking the compositor to re-sample a moment after launch, once the app has drawn,
+     * restores it without taking the window down.
      */
     private var blurJob: Job? = null
     private fun reassertBlur() {
@@ -312,7 +319,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             for (wait in longArrayOf(250, 600, 1200)) {
                 delay(wait)
                 if (!igVisible) return@launch
-                overlay.rebuild()
+                overlay.refreshBlur()
             }
         }
     }
@@ -322,8 +329,26 @@ class BlockerService : AccessibilityService(), OverlayActions {
         if (!igVisible) { hideOverlay(); announce(AppGraph.state.gateNow(cfg)); return }
         val gate = AppGraph.state.gateNow(cfg)
         announce(gate)
-        if (gate !is Gate.Closed) { hideOverlay(); return }
+        if (gate !is Gate.Closed) { hideOverlay(); uncoveredSince = 0L; return }
         showOverlay(bounds, model(gate))
+        backstop()
+    }
+
+    private var uncoveredSince = 0L
+
+    /**
+     * Second layer behind the overlay: if the gate is closed, a blocked app is in front and the cover still isn't up
+     * after a moment (the window was refused, or the system dropped it), send the user home rather than leave the app usable.
+     */
+    private fun backstop() {
+        if (overlay.isShowing || screenUnusable()) { uncoveredSince = 0L; return }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (uncoveredSince == 0L) { uncoveredSince = now; return }
+        if (now - uncoveredSince >= BACKSTOP_MS) {
+            uncoveredSince = 0L
+            log("backstop: cover missing, sending home")
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        }
     }
 
     /**
@@ -504,6 +529,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
         const val GUARD_DELAY_MS = 350L
         const val REFRESH_AHEAD_MS = 5_000L
         const val EARLY_COVER_MS = 1_500L
+        const val BACKSTOP_MS = 1_500L
         const val MIN_REFRESH_GAP_MS = 1_800L
         const val STALE_PUSH_MS = 120_000L
     }
