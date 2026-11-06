@@ -21,6 +21,7 @@ class ClaudeAppWatcher : NotificationListenerService() {
     }
 
     override fun onListenerConnected() {
+        PermissionAlerts.listenerGranted(this)
         waiting.clear()
         runCatching { activeNotifications }.getOrNull()?.forEach { consider(it) }
         publish()
@@ -38,6 +39,10 @@ class ClaudeAppWatcher : NotificationListenerService() {
     override fun onListenerDisconnected() {
         waiting.clear()
         publish()
+        // A disconnect is either the user revoking access or the system rebinding. Only the first is worth an alert.
+        val still = androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
+        if (still) runCatching { requestRebind(android.content.ComponentName(this, ClaudeAppWatcher::class.java)) }
+        else if (PermissionAlerts.listenerWanted(this)) PermissionAlerts.listenerRevoked(this)
     }
 
     /** True when the set of waiting items may have changed. */
