@@ -17,6 +17,9 @@ interface SessionDb {
   tasks_total?: number | null;
   task_now?: string | null;
   task_next?: string | null;
+  needs_you_at?: string | Date | null;
+  needs_reason?: string | null;
+  needs_label?: string | null;
 }
 interface DeviceDb {
   token: string;
@@ -41,6 +44,9 @@ const toSession = (r: SessionDb): SessionRow => ({
   tasksTotal: r.tasks_total ?? null,
   taskNow: r.task_now ?? null,
   taskNext: r.task_next ?? null,
+  needsYouAt: ms(r.needs_you_at),
+  needsReason: r.needs_reason ?? null,
+  needsLabel: r.needs_label ?? null,
 });
 const toDevice = (r: DeviceDb): Device => ({
   token: r.token,
@@ -62,13 +68,14 @@ export function createNeonStore(databaseUrl: string): Store {
     },
     async putSession(r) {
       await sql`
-        insert into sessions (session_id, state, last_seen, lease_until, working_since, last_user_prompt_at, last_event, agent, tasks_done, tasks_total, task_now, task_next)
-        values (${r.sessionId}, ${r.state}, ${iso(r.lastSeen)}, ${iso(r.leaseUntil)}, ${iso(r.workingSince)}, ${iso(r.lastUserPromptAt)}, ${r.lastEvent}, ${r.agent ?? null}, ${r.tasksDone ?? null}, ${r.tasksTotal ?? null}, ${r.taskNow ?? null}, ${r.taskNext ?? null})
+        insert into sessions (session_id, state, last_seen, lease_until, working_since, last_user_prompt_at, last_event, agent, tasks_done, tasks_total, task_now, task_next, needs_you_at, needs_reason, needs_label)
+        values (${r.sessionId}, ${r.state}, ${iso(r.lastSeen)}, ${iso(r.leaseUntil)}, ${iso(r.workingSince)}, ${iso(r.lastUserPromptAt)}, ${r.lastEvent}, ${r.agent ?? null}, ${r.tasksDone ?? null}, ${r.tasksTotal ?? null}, ${r.taskNow ?? null}, ${r.taskNext ?? null}, ${iso(r.needsYouAt ?? null)}, ${r.needsReason ?? null}, ${r.needsLabel ?? null})
         on conflict (session_id) do update set
           state = excluded.state, last_seen = excluded.last_seen, lease_until = excluded.lease_until,
           working_since = excluded.working_since, last_user_prompt_at = excluded.last_user_prompt_at,
           last_event = excluded.last_event, agent = excluded.agent, tasks_done = excluded.tasks_done,
-          tasks_total = excluded.tasks_total, task_now = excluded.task_now, task_next = excluded.task_next`;
+          tasks_total = excluded.tasks_total, task_now = excluded.task_now, task_next = excluded.task_next,
+          needs_you_at = excluded.needs_you_at, needs_reason = excluded.needs_reason, needs_label = excluded.needs_label`;
     },
     async listSessions() {
       const rows = (await sql`select * from sessions`) as SessionDb[];

@@ -115,6 +115,13 @@ fun StatusScreen(modifier: Modifier = Modifier) {
         Spacer(Modifier.height(8.dp))
         Spacer(Modifier.height(16.dp))
         if (gate is Gate.Open && agents.isNotEmpty()) AgentsCard(agents, settings?.showTaskText == true)
+        val needsYou = (gate as? Gate.Closed)?.reason == com.neilluo.scrolllock.data.ClosedReason.NeedsYou
+        if (needsYou) {
+            val local by AppGraph.state.localWaitingFlow.collectAsStateWithLifecycle()
+            val snap by AppGraph.state.snapshots.collectAsStateWithLifecycle(initialValue = null)
+            val who = AppGraph.state.waitersNow(settings?.showTaskText == true)
+            WaitingCard(if (local.isEmpty() && snap == null) emptyList() else who)
+        }
         if (!notificationsOn) NotificationsOffCard {
             ctx.startActivity(
                 android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
@@ -151,6 +158,25 @@ private fun AgentsCard(agents: List<AgentStatus>, showText: Boolean) {
         }
         AgentSummary.rollup(agents)?.takeIf { agents.size > 1 }?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Who is waiting on you. Project names show only if you turned on task titles. */
+@Composable
+private fun WaitingCard(waiters: List<com.neilluo.scrolllock.data.Waiter>) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.tertiaryContainer).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("Waiting on you", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onTertiaryContainer)
+        if (waiters.isEmpty()) Text("Something needs an answer.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onTertiaryContainer)
+        for (w in waiters) {
+            Text(
+                w.detail?.let { "${w.name} · $it" } ?: w.name,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
         }
     }
 }

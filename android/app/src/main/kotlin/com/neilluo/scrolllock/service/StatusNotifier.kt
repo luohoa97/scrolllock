@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import com.neilluo.scrolllock.MainActivity
 import com.neilluo.scrolllock.R
 
@@ -20,7 +21,7 @@ class StatusNotifier(private val ctx: Context) {
     private val nm = ctx.getSystemService(NotificationManager::class.java)
     private var last: Content? = null
 
-    private data class Content(val title: String, val text: String, val big: String, val publicText: String)
+    private data class Content(val title: String, val text: String, val big: String, val publicText: String, val chip: String?)
 
     init {
         // Earlier builds used other channels. Importance is fixed per channel, so changing it needs a new id.
@@ -35,8 +36,8 @@ class StatusNotifier(private val ctx: Context) {
     }
 
     /** [publicText] is what a locked screen may show. */
-    fun show(title: String, text: String, big: String = "", publicText: String = text) {
-        val c = Content(title, text, big, publicText)
+    fun show(title: String, text: String, big: String = "", publicText: String = text, chip: String? = null) {
+        val c = Content(title, text, big, publicText, chip)
         if (c == last) return
         last = c
         post(c)
@@ -72,12 +73,23 @@ class StatusNotifier(private val ctx: Context) {
             .setContentIntent(open)
             .setDeleteIntent(dismissed)
         if (c.big.isNotEmpty()) b.setStyle(Notification.BigTextStyle().bigText(c.big))
+        // Android 16 Live Update: the system (and some makers' skins) show it as a chip in the status bar.
+        // Only while something is actually going on; a locked, idle phone gets the plain notification.
+        if (c.chip != null && Build.VERSION.SDK_INT >= 36) {
+            runCatching {
+                b.setRequestPromotedOngoing(true)
+                b.setShortCriticalText(c.chip)
+            }
+        }
         val n = b.build().also { it.flags = it.flags or Notification.FLAG_NO_CLEAR or Notification.FLAG_ONGOING_EVENT }
         runCatching { nm?.notify(ID, n) }
     }
 
     /** False when the user has turned this app's notifications off, which we can't undo. */
     fun enabled(): Boolean = nm?.areNotificationsEnabled() != false
+
+    /** True when the system will show our notification as a Live Update (status-bar chip). */
+    fun liveUpdatesAllowed(): Boolean = Build.VERSION.SDK_INT >= 36 && runCatching { nm?.canPostPromotedNotifications() == true }.getOrDefault(false)
 
     companion object {
         const val ACTION_DISMISSED = "com.neilluo.scrolllock.STATUS_DISMISSED"

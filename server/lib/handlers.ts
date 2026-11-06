@@ -49,10 +49,13 @@ function parseTasks(body: Record<string, unknown>): { done: number; total: numbe
   return { done, total, now: cleanText(body.tasks_now, 120), next: cleanText(body.tasks_next, 120) };
 }
 
+/** Why the agent is blocked, as a category only. */
+const parseReason = (v: unknown): string => (v === "permission" || v === "question" ? v : "other");
+
 /** A short display label such as "claude", "codex" or "my-agent". Anything else is ignored. */
 const parseAgent = (v: unknown): string | null => (typeof v === "string" && /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,23}$/.test(v) ? v : null);
 
-/** POST /api/event  {session_id, event, human?, lease_ms?, agent?, tasks_done?, tasks_total?, tasks_now?, tasks_next?}  (write token) */
+/** POST /api/event  {session_id, event, human?, lease_ms?, agent?, reason?, label?, tasks_done?, tasks_total?, tasks_now?, tasks_next?}  (write token) */
 export async function handleEvent(req: Request, d: Deps): Promise<Response> {
   if (!hasToken(req, d.env.WRITE_TOKEN)) return unauthorized();
   const body = await readJson(req);
@@ -64,7 +67,7 @@ export async function handleEvent(req: Request, d: Deps): Promise<Response> {
 
   const now = d.now();
   const leaseMs = body.lease_ms === undefined ? undefined : clampInt(body.lease_ms, MIN_LEASE_MS, MAX_LEASE_MS, LEASE_MS);
-  await applyEvent(d.store, { sessionId, event: event as EventName, human: body.human === true, leaseMs, tasks: parseTasks(body), agent: parseAgent(body.agent) }, now);
+  await applyEvent(d.store, { sessionId, event: event as EventName, human: body.human === true, leaseMs, tasks: parseTasks(body), agent: parseAgent(body.agent), reason: parseReason(body.reason), label: cleanText(body.label, 60) }, now);
   await pushChanges(d.store, d.pusher, now);
   return json({ ok: true });
 }

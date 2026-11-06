@@ -9,8 +9,8 @@ class GateLogicTest {
     private fun status(working: Boolean, since: Long? = null, lease: Long? = null, serverTime: Long = 1_000_000, reason: String = "") =
         RelayStatus(working = working, unlockReason = reason, since = since, leaseUntil = lease, serverTime = serverTime, activeSessions = if (working) 1 else 0)
 
-    private fun gate(s: RelaySnapshot?, now: Long, failed: Boolean = false, bypass: Long = 0, configured: Boolean = true) =
-        GateLogic.compute(configured, s, failed, now, bypass)
+    private fun gate(s: RelaySnapshot?, now: Long, failed: Boolean = false, bypass: Long = 0, configured: Boolean = true, local: Boolean = false) =
+        GateLogic.compute(configured, s, failed, now, bypass, local)
 
     @Test fun unlockedWhileTheLeaseHasTimeLeft() {
         val snap = RelaySnapshot.fromStatus(status(true, since = 990_000, lease = 1_060_000, reason = "claude_busy:1 sessions"), receivedElapsed = 5_000)
@@ -86,5 +86,18 @@ class GateLogicTest {
     @Test fun malformedPushIsRejected() {
         assertNull(RelaySnapshot.fromPush(mapOf("working" to "true"), 0))
         assertNull(RelaySnapshot.fromPush(mapOf("serverTime" to "5"), 0))
+    }
+
+    @Test fun waitingOnYouLocksEvenWhileSessionsWorkAndOverridesABypass() {
+        val snap = RelaySnapshot.fromStatus(status(false, reason = "locked:needs_you:1 waiting"), receivedElapsed = 0)
+        assertEquals(ClosedReason.NeedsYou, (gate(snap, 1_000) as Gate.Closed).reason)
+        assertEquals(ClosedReason.NeedsYou, (gate(snap, 1_000, bypass = 60_000) as Gate.Closed).reason)
+    }
+
+    @Test fun theClaudeAppWaitingOnYouLocksWithNoRelayAnswerAtAll() {
+        assertEquals(ClosedReason.NeedsYou, (gate(null, 0, local = true) as Gate.Closed).reason)
+        val working = RelaySnapshot.fromStatus(status(true, lease = 1_060_000), receivedElapsed = 0)
+        assertEquals(ClosedReason.NeedsYou, (gate(working, 1_000, local = true) as Gate.Closed).reason)
+        assertTrue(gate(working, 1_000) is Gate.Open)
     }
 }

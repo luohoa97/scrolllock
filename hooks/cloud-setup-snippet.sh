@@ -25,9 +25,18 @@ fi
 [ -n "$SCROLLLOCK_URL" ] && [ -n "$SCROLLLOCK_WRITE_TOKEN" ] || exit 0
 in=$(cat 2>/dev/null)
 f() { printf '%s' "$in" | tr '\n' ' ' | grep -o "\"$1\" *: *\"[^\"]*\"" | head -n 1 | sed 's/^[^:]*: *"//; s/"$//'; }
-case "$(f hook_event_name)" in SessionStart) e=hello;; UserPromptSubmit|BeforeAgent) e=working;; PreToolUse|BeforeTool) e=heartbeat;; PostToolUse|AfterTool) e=tool_done;; Stop|AfterAgent|Interrupt) e=idle;; SessionEnd) e=end;; *) exit 0;; esac
+case "$(f hook_event_name)" in SessionStart) e=hello;; Notification|PermissionRequest) e=needs_you;; UserPromptSubmit|BeforeAgent) e=working;; PreToolUse|BeforeTool) e=heartbeat;; PostToolUse|AfterTool) e=tool_done;; Stop|AfterAgent|Interrupt) e=idle;; SessionEnd) e=end;; *) exit 0;; esac
 sid=$(f session_id | tr -cd 'A-Za-z0-9._-' | cut -c1-120); [ -n "$sid" ] || exit 0
 h=false; t=2; extra=""
+# The agent is blocked on you (a permission prompt or a question): the phone stays locked until you answer.
+# The idle "waiting for your input" nudge after a finished turn is not a block, so it is ignored.
+if [ "$e" = needs_you ]; then
+  nt=$(f notification_type); nm=$(f message)
+  case "$nt $nm" in *idle_prompt*|*"waiting for your input"*) exit 0;; esac
+  case "$(f hook_event_name) $nt $nm" in *PermissionRequest*|*permission*) r=permission;; *elicitation*|*question*) r=question;; *) r=other;; esac
+  extra=",\"reason\":\"$r\""
+  if [ "${SCROLLLOCK_TASK_TEXT:-}" = 1 ]; then d=$(f cwd); extra="$extra,\"label\":\"$(printf '%s' "${d##*/}" | tr -d '\000-\037"\\' | cut -c1-60)\""; fi
+fi
 # The agent's own task list (Claude Code TodoWrite, Codex update_plan, Gemini write_todos) becomes a progress
 # event: counts always, and task text only if you set SCROLLLOCK_TASK_TEXT=1 where the agent runs.
 if [ "$e" = heartbeat ]; then case "$(f tool_name)" in TodoWrite|update_plan|write_todos)

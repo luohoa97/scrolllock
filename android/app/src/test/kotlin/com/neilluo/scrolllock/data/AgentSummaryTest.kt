@@ -21,9 +21,10 @@ class AgentSummaryTest {
         assertEquals("Claude 1/2 · Claude 1/2 · Claude 1/2 · +2", AgentSummary.short(many))
     }
 
-    @Test fun islandNamesOneAgentAndCountsSeveral() {
-        assertEquals("Claude working", AgentSummary.island(emptyList()))
-        assertEquals("Claude 3/7", AgentSummary.island(listOf(claude)))
+    @Test fun capsuleIsAsShortAsItCanBe() {
+        assertEquals("Working", AgentSummary.island(emptyList()))
+        assertEquals("Working", AgentSummary.island(listOf(codex)))
+        assertEquals("3/7", AgentSummary.island(listOf(claude)))
         assertEquals("2 agents", AgentSummary.island(listOf(claude, codex)))
     }
 

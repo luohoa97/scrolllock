@@ -90,6 +90,103 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
+        Section("Capsule and notification") {
+            ToggleRow("Show capsule around the camera", s.showCapsule) { on -> scope.launch { AppGraph.settings.setShowCapsule(on) } }
+            Text(
+                "A small capsule at the top while a blocked app is open and Claude is working. Its own drawing, not the phone maker's Magic Capsule.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            if (android.os.Build.VERSION.SDK_INT >= 36) {
+                OutlinedButton(onClick = {
+                    ctx.startActivity(
+                        android.content.Intent("android.settings.MANAGE_APP_PROMOTED_NOTIFICATIONS")
+                            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }) { Text("Live updates settings") }
+                Text(
+                    "ScrollLock asks the system to show its status as a Live Update chip while Claude is working. Whether your phone draws that as a capsule is up to the phone maker.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        Section("Waiting on you") {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            Text(
+                "When the Claude app on this phone has a notification that needs you (approval, a question, a coordinator waiting), the blocked apps stay locked. Give ScrollLock notification access for that. It reads only the Claude app's notifications, keeps them in memory, and sends nothing anywhere.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            OutlinedButton(onClick = {
+                ctx.startActivity(
+                    android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }) { Text("Notification access") }
+            Text(
+                "Sideloaded and greyed out? App info, three dots, Allow restricted settings, then try again.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = {
+                AppGraph.samples.clear()
+                AppGraph.sampleUntil = android.os.SystemClock.elapsedRealtime() + 120_000
+            }) { Text("Capture Claude notifications (2 min)") }
+            OutlinedButton(onClick = {
+                val text = AppGraph.samples.joinToString("\n").ifEmpty { "(nothing captured)" }
+                ctx.getSystemService(android.content.ClipboardManager::class.java)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("Claude notifications", text))
+                android.widget.Toast.makeText(ctx, "Copied ${AppGraph.samples.size} notification(s)", android.widget.Toast.LENGTH_SHORT).show()
+            }) { Text("Copy captured") }
+            Text(
+                "Tap Capture, then let the Claude app post a notification that needs you, then Copy. Paste it into an issue so the wording can be matched.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Section("Keep it running") {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val guide = remember { com.neilluo.scrolllock.data.VendorGuide.forManufacturer(android.os.Build.MANUFACTURER) }
+            val exempt = remember { mutableStateOf(false) }
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                exempt.value = ctx.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(ctx.packageName)
+            }
+            Text(
+                "If your phone stops ScrollLock in the background, the blocked apps open. Steps for ${guide.maker}:",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            for ((i, step) in guide.steps.withIndex()) Text("${i + 1}. $step", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                if (exempt.value) "Battery limits: ScrollLock is exempt." else "Battery limits: not exempt yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = {
+                    ctx.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${ctx.packageName}"))
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }) { Text("Battery") }
+                OutlinedButton(onClick = {
+                    // Try the maker's own screen; the names differ between versions, so fall back to App info.
+                    val opened = guide.components.any { (pkg, cls) ->
+                        runCatching {
+                            ctx.startActivity(android.content.Intent().setClassName(pkg, cls).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }.isSuccess
+                    }
+                    if (!opened) ctx.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${ctx.packageName}"))
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }) { Text("Autostart") }
+            }
+        }
+
         Section("While locked") {
             Text(
                 "Instagram, YouTube, TikTok, Snapchat and Facebook are blocked whole while Claude isn't working. Discord is left alone.",

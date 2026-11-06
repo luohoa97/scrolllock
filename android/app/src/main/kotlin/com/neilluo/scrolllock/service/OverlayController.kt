@@ -47,6 +47,33 @@ class OverlayController(
     private var elapsedView: TextView? = null
     private var bypassView: TextView? = null
     private var builtWithBlur = false
+    private var lastBounds: Box? = null
+    private var lastModel: OverlayModel? = null
+
+    /** The system can turn blur on or off while we're up. If it flips, rebuild so the window matches. */
+    private val blurListener = java.util.function.Consumer<Boolean> {
+        val b = lastBounds; val m = lastModel
+        if (root != null && b != null && m != null) show(b, m)
+    }.also { l ->
+        runCatching { wm.addCrossWindowBlurEnabledListener(service.mainExecutor, l) }
+    }
+
+    fun release() {
+        runCatching { wm.removeCrossWindowBlurEnabledListener(blurListener) }
+    }
+
+    /**
+     * Puts the window up again from scratch, with no fade. Blur is applied by the compositor against whatever is
+     * behind the window when it's added, and right after a blocked app is launched from nothing that can be a
+     * starting window that isn't blurred; re-adding once the app has drawn gets a real blur.
+     */
+    fun rebuild() {
+        val b = lastBounds ?: return
+        val m = lastModel ?: return
+        if (root == null) return
+        removeNow()
+        show(b, m, animate = false)
+    }
 
     val isShowing: Boolean get() = root != null
 
@@ -58,7 +85,8 @@ class OverlayController(
      * (battery saver, a vendor power mode, the "disable window blurs" developer option, tunneled
      * video) the overlay is a near-opaque scrim instead, so the app is never left showing.
      */
-    fun show(bounds: Box, model: OverlayModel) {
+    fun show(bounds: Box, model: OverlayModel, animate: Boolean = false) {
+        lastBounds = bounds; lastModel = model
         val blur = wm.isCrossWindowBlurEnabled
         if (root != null) {
             // Blur support can flip while we're up (battery saver, a developer option, thermal limits).
@@ -87,7 +115,7 @@ class OverlayController(
             title = "ScrollLock"
         }
         val view = build(model, blur)
-        view.alpha = 0f
+        view.alpha = if (animate) 0f else 1f
         try {
             wm.addView(view, lp)
         } catch (_: Exception) {
@@ -96,7 +124,8 @@ class OverlayController(
         root = view
         params = lp
         builtWithBlur = blur
-        view.animate().alpha(1f).setDuration(FADE_MS).start()
+        android.util.Log.i("ScrollLock", "overlay window added blur=$blur bounds=${bounds.width}x${bounds.height} animate=$animate")
+        if (animate) view.animate().alpha(1f).setDuration(FADE_MS).start()
     }
 
     private fun update(bounds: Box, model: OverlayModel) {
@@ -120,6 +149,7 @@ class OverlayController(
     }
 
     fun hide() {
+        lastBounds = null; lastModel = null
         val view = root ?: return
         root = null
         params = null
@@ -144,8 +174,8 @@ class OverlayController(
         val fg = if (night) Color.WHITE else Color.parseColor("#111111")
         val muted = if (night) Color.parseColor("#B3FFFFFF") else Color.parseColor("#99000000")
         val scrim = when {
-            blur && night -> Color.parseColor("#990B0B0B")
-            blur -> Color.parseColor("#99FFFFFF")
+            blur && night -> Color.parseColor("#CC0B0B0B")
+            blur -> Color.parseColor("#CCFFFFFF")
             night -> Color.parseColor("#F20B0B0B")
             else -> Color.parseColor("#F2FFFFFF")
         }

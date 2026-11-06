@@ -163,6 +163,7 @@ The Settings guard reads the labels on Settings screens, only while Lockdown is 
 
 - Which windows are on screen and their package names and bounds, to find a blocked app and cover only its window.
 - A blocked app's screen structure, only when you ask for a debug dump in Settings: view ids, class names, content descriptions, which tab is selected, sizes. Never the text of messages or text fields.
+- If you grant notification access: the title and text of notifications from the Claude app only, to spot "waiting on you". Kept in memory, never stored or sent.
 - Nothing is sent anywhere except the relay: your read token to ask for status, and your push token to register.
 
 ## Fish helpers

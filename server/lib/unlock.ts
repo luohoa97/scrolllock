@@ -1,5 +1,13 @@
-import { STALE_RELAY_MS } from "./config";
-import type { AgentProgress, SessionRow, Status, UnlockConfig } from "./types";
+import { NEEDS_YOU_MS, STALE_RELAY_MS } from "./config";
+import type { AgentProgress, SessionRow, Status, UnlockConfig, WaitingItem } from "./types";
+
+/** Who is waiting on the human, newest first. */
+function listWaiting(waiting: readonly SessionRow[]): WaitingItem[] {
+  return [...waiting]
+    .sort((a, b) => (b.needsYouAt ?? 0) - (a.needsYouAt ?? 0))
+    .slice(0, 6)
+    .map((s) => ({ agent: s.agent ?? "Agent", reason: s.needsReason ?? "other", label: s.needsLabel ?? null }));
+}
 
 /** Every working session, newest first, with its agent label and task progress if it has any. */
 function listAgents(active: readonly SessionRow[]): AgentProgress[] {
@@ -44,7 +52,19 @@ export function computeStatus(
   );
 
   const relayStale = lastEventAt === null || now - lastEventAt > STALE_RELAY_MS;
-  const base = { lastEventAt, relayStale, serverTime: now, agents: [] as AgentProgress[] };
+  // Someone is waiting on the human. That wins over any session that is working: scrolling can wait until they answer.
+  const waiting = sessions.filter((s) => s.needsYouAt != null && now - s.needsYouAt < NEEDS_YOU_MS);
+  const base = { lastEventAt, relayStale, serverTime: now, agents: [] as AgentProgress[], needsYou: waiting.length, waiting: listWaiting(waiting) };
+  if (waiting.length > 0) {
+    return {
+      ...base,
+      working: false,
+      activeSessions: active.length,
+      unlockReason: "locked:needs_you",
+      since: Math.max(...waiting.map((s) => s.needsYouAt as number)),
+      leaseUntil: null,
+    };
+  }
 
   const busy = active.length > 0 || graceful.length > 0;
   let busyLeaseUntil: number | null = null;
