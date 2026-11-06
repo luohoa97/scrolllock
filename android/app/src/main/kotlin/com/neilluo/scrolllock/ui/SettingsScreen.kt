@@ -37,6 +37,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.lifecycle.repeatOnLifecycle
+import com.neilluo.scrolllock.data.PermissionHealth.Need as N
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +61,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp, top = 8.dp))
+
+        Section("Permissions") { PermissionsRows() }
 
         Section("Unlock rule") {
             ModeRow("While Claude is working", "Open whenever a Claude Code session is busy", s.mode == UnlockMode.ClaudeBusy) {
@@ -337,5 +341,43 @@ private fun LabeledSlider(label: String, valueText: String, value: Float, range:
             Text(if (v == value) valueText else v.toInt().toString(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
         }
         Slider(v, { v = it }, valueRange = range, onValueChangeFinished = { onDone(v) })
+    }
+}
+
+/** What's switched on and what isn't, with a button to each system screen. Re-read every time the screen is shown. */
+@Composable
+private fun PermissionsRows() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    var on by remember { mutableStateOf(mapOf<com.neilluo.scrolllock.data.PermissionHealth.Need, Boolean>()) }
+    androidx.compose.runtime.LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            on = mapOf(
+                com.neilluo.scrolllock.data.PermissionHealth.Need.Accessibility to accessibilityEnabled(ctx),
+                com.neilluo.scrolllock.data.PermissionHealth.Need.Notifications to
+                    (ctx.getSystemService(android.app.NotificationManager::class.java)?.areNotificationsEnabled() != false),
+                com.neilluo.scrolllock.data.PermissionHealth.Need.NotificationAccess to
+                    androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName),
+                com.neilluo.scrolllock.data.PermissionHealth.Need.Battery to
+                    ctx.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(ctx.packageName),
+            )
+        }
+    }
+    val rows = listOf(
+        Triple(N.Accessibility, "Accessibility", if (on[N.Accessibility] == true) "On. Blocked apps are blocked." else "Off. Blocked apps are NOT blocked."),
+        Triple(N.Notifications, "Notifications", if (on[N.Notifications] == true) "On." else "Off. The status notification can't show."),
+        Triple(N.NotificationAccess, "Claude app access", if (on[N.NotificationAccess] == true) "On. \"Waiting on you\" works." else "Off. Optional, needed for \"Waiting on you\"."),
+        Triple(N.Battery, "Battery limits", if (on[N.Battery] == true) "Exempt." else "Not exempt. Some phones will stop ScrollLock."),
+    )
+    for ((need, name, state) in rows) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(name, style = MaterialTheme.typography.titleSmall)
+                Text(state, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            OutlinedButton(onClick = { ctx.startActivity(intentFor(ctx, need).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }) {
+                Text(if (on[need] == true) "Open" else "Turn on")
+            }
+        }
     }
 }

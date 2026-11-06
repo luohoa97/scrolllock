@@ -184,7 +184,7 @@ private fun WaitingCard(waiters: List<com.neilluo.scrolllock.data.Waiter>) {
     }
 }
 
-private fun intentFor(ctx: android.content.Context, need: com.neilluo.scrolllock.data.PermissionHealth.Need): android.content.Intent = when (need) {
+internal fun intentFor(ctx: android.content.Context, need: com.neilluo.scrolllock.data.PermissionHealth.Need): android.content.Intent = when (need) {
     com.neilluo.scrolllock.data.PermissionHealth.Need.Accessibility -> android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
     com.neilluo.scrolllock.data.PermissionHealth.Need.NotificationAccess -> android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
     com.neilluo.scrolllock.data.PermissionHealth.Need.Notifications -> android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
