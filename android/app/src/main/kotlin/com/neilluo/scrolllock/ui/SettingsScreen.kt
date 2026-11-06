@@ -77,6 +77,19 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        Section("Agent tasks") {
+            Text(
+                "The status notification and Status screen show which agents are working and how many tasks each has done.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            ToggleRow("Show task titles", s.showTaskText) { on -> scope.launch { AppGraph.settings.setShowTaskText(on) } }
+            Text(
+                "Off: only agent names and counts. On: also the current and next task, if your agent's hook is set to send them (SCROLLLOCK_TASK_TEXT=1). Titles go to your relay and database, and never appear on the lock screen.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         Section("While locked") {
             Text(
                 "Instagram, YouTube, TikTok, Snapchat and Facebook are blocked whole while Claude isn't working. Discord is left alone.",

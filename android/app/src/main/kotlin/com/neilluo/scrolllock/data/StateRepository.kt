@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 
@@ -29,6 +30,14 @@ class StateRepository(
 ) {
     private val snapshot = MutableStateFlow<RelaySnapshot?>(null)
     private val fetchFailed = MutableStateFlow(false)
+
+    /** For things that react to new information without ticking, like the always-on notification. */
+    val snapshots: StateFlow<RelaySnapshot?> = snapshot
+    val failed: StateFlow<Boolean> = fetchFailed
+
+    /** Agents working as of the last answer. Pushes carry no task data, so a push keeps the list we had while still working. */
+    val agents: Flow<List<AgentStatus>> = snapshot.map { it?.agents.orEmpty() }
+    fun agentsNow(): List<AgentStatus> = snapshot.value?.agents.orEmpty()
 
     /** Counts once a second while someone collects; stops when nobody is looking. */
     private val ticker: Flow<Long> = flow {
@@ -66,7 +75,8 @@ class StateRepository(
 
     fun applyPush(data: Map<String, String>): Boolean {
         val snap = RelaySnapshot.fromPush(data, elapsed()) ?: return false
-        snapshot.value = snap
+        val prev = snapshot.value
+        snapshot.value = if (snap.working && prev?.working == true) snap.copy(agents = prev.agents) else snap
         fetchFailed.value = false
         return true
     }

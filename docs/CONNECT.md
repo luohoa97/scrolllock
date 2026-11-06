@@ -9,7 +9,7 @@ Everything below needs two values, the same ones the README sets up:
 
 Never put the write token in a repo. Keep it in your shell environment.
 
-The hook sends a session id, the event name, whether a person typed the prompt, and a lease length. It never sends prompt text. It prints nothing and always exits 0, so it can't interfere with the agent.
+The hook sends a session id, the event name, whether a person typed the prompt, a lease length, the agent's name, and task counts (see "Agents and task lists"). It never sends prompt text, and task titles only if you opt in. It prints nothing and always exits 0, so it can't interfere with the agent.
 
 ## Claude Code on your own machine
 
@@ -41,8 +41,10 @@ Codex has lifecycle hooks with the same event names as Claude Code (`SessionStar
 2. Install into Codex's file:
 
    ```fish
-   curl -fsSL https://raw.githubusercontent.com/luohoa97/scrolllock/main/hooks/install.sh | env SL_SET=$HOME/.codex/hooks.json sh
+   curl -fsSL https://raw.githubusercontent.com/luohoa97/scrolllock/main/hooks/install.sh | env SL_SET=$HOME/.codex/hooks.json SL_AGENT=codex sh
    ```
+
+   `SL_AGENT=codex` makes the hook report itself as "Codex", so the phone shows it next to your other agents.
 
 3. Start Codex and run `/hooks`. Codex skips new or changed hooks until you trust them, so review and trust the ScrollLock entries there.
 4. Check with `sl-check` as above.
@@ -54,7 +56,7 @@ Written from [OpenAI's hooks docs](https://learn.chatgpt.com/docs/hooks) on 6 No
 Gemini CLI has hooks in `settings.json`, with different event names. The hook script already understands them (`BeforeAgent` starts work, `BeforeTool` and `AfterTool` keep it alive, `AfterAgent` stops it). Gemini's hook timeout is in milliseconds, so set it to match:
 
 ```fish
-curl -fsSL https://raw.githubusercontent.com/luohoa97/scrolllock/main/hooks/install.sh | env SL_SET=$HOME/.gemini/settings.json SL_EVENTS="SessionStart BeforeAgent BeforeTool AfterTool AfterAgent SessionEnd" SL_TIMEOUT=5000 sh
+curl -fsSL https://raw.githubusercontent.com/luohoa97/scrolllock/main/hooks/install.sh | env SL_SET=$HOME/.gemini/settings.json SL_AGENT=gemini SL_EVENTS="SessionStart BeforeAgent BeforeTool AfterTool AfterAgent SessionEnd" SL_TIMEOUT=5000 sh
 ```
 
 Restart Gemini CLI afterwards. Written from [Gemini CLI's hooks reference](https://geminicli.com/docs/hooks/reference/) and tested against the hook script, not a live install.
@@ -75,10 +77,13 @@ curl -sS -X POST $SCROLLLOCK_URL/api/event \
 | `hello` | the session starts | the relay knows the session exists; nothing unlocks |
 | `working` | a turn starts (set `"human": true` when a person typed the prompt, not an automated one) | unlocked for `lease_ms` |
 | `heartbeat` | a tool starts running | unlocked for `lease_ms`, or 10 minutes if you leave it out, because tools can run long |
+| `progress` | the agent updates its task list | renews the lease, and records the counts below |
 | `tool_done` | a tool finishes | renews the lease |
 | `beat` | every few seconds while busy | renews the lease, but only if the session is already working, so a stray one can't unlock anything |
 | `idle` | the turn stops | locks after the 10 second grace period |
 | `end` | the session closes | locks at once |
+
+Add `"agent": "my-agent"` to any event to name the session (letters, digits, space, `.`, `_`, `-`, up to 24 characters). The phone lists every working agent by that name.
 
 `session_id` is anything stable per session, up to 120 characters of letters, digits, `.`, `_` and `-`. Use a different one per session. Several sessions can be working at once, and the phone stays unlocked while any one is.
 
@@ -107,6 +112,26 @@ end
 ```
 
 Use it as `sl-wrap aider` or `sl-wrap my-agent --task build`. Because the lease is 60 seconds, a command killed with `kill -9` stays unlocked for up to a minute.
+
+## Agents and task lists
+
+Several agents can work at once, in any mix of tools. The phone's notification and Status screen list each one by name with its task progress: "Claude 3/7 · Codex working". A rolled-up count appears when two or more report one.
+
+The shipped hook reads the agent's own task list when it updates it: Claude Code's `TodoWrite`, Codex's `update_plan` and Gemini's `write_todos`. That works only where the tool shows its plan to hooks. Claude Code does. For Codex and Gemini this is written from their docs and not tested live, so if counts don't show up there, post them yourself:
+
+```fish
+curl -sS -X POST $SCROLLLOCK_URL/api/event \
+  -H "authorization: Bearer $SCROLLLOCK_WRITE_TOKEN" -H 'content-type: application/json' \
+  -d '{"session_id":"my-agent-1","event":"progress","agent":"my-agent","tasks_done":3,"tasks_total":7,"lease_ms":10000}'
+```
+
+**Task text is opt-in, twice.** By default only counts leave your machine. To also share the current and next task title, set this where the agent runs:
+
+```fish
+set -Ux SCROLLLOCK_TASK_TEXT 1
+```
+
+Titles then go to your relay, its database and the phone. Firebase pushes never carry them. On the phone, Settings, "Show task titles" must also be on before they appear, and they never appear on the lock screen: that shows a public version with names and counts only. In your own calls, send `tasks_now` and `tasks_next` (up to 120 characters each).
 
 ## If it isn't working
 

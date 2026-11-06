@@ -26,6 +26,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
+import com.neilluo.scrolllock.data.AgentSummary
 import kotlinx.coroutines.launch
 
 /**
@@ -59,6 +62,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
     private var frontJobs: Job? = null
     private val nudges = Channel<Unit>(Channel.CONFLATED)
     private var screenReceiver: BroadcastReceiver? = null
+    private var dismissReceiver: BroadcastReceiver? = null
     private var weMuted = false
 
     override fun onServiceConnected() {
@@ -72,8 +76,16 @@ class BlockerService : AccessibilityService(), OverlayActions {
         rules = RulesLoader.load(this)
         engine = DetectionEngine(rules)
         scope.launch { AppGraph.settings.flow.collect { s -> cfg = s } }
+        scope.launch { keepNotificationCurrent() }
+        runCatching {
+            dismissReceiver = object : BroadcastReceiver() {
+                override fun onReceive(c: Context?, i: Intent?) { notifier.repost() }
+            }.also {
+                androidx.core.content.ContextCompat.registerReceiver(this, it, IntentFilter(StatusNotifier.ACTION_DISMISSED), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
+            }
+        }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected, build 0.1.13")
+        log("service connected, build 0.1.14")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             var settle = 0
@@ -97,7 +109,11 @@ class BlockerService : AccessibilityService(), OverlayActions {
         // Android 14+ refuses a receiver registered without an exported flag.
         runCatching {
             screenReceiver = object : BroadcastReceiver() {
-                override fun onReceive(c: Context?, i: Intent?) { nudges.trySend(Unit) }
+                override fun onReceive(c: Context?, i: Intent?) {
+                    nudges.trySend(Unit)
+                    // One look at the relay when the screen comes on, so the notification is right when you pick the phone up.
+                    if (i?.action == Intent.ACTION_USER_PRESENT) scope.launch { AppGraph.state.refresh() }
+                }
             }.also {
                 androidx.core.content.ContextCompat.registerReceiver(
                     this,
@@ -249,32 +265,50 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     /** One place decides whether the overlay is up: Instagram visible and the gate closed. */
     private fun apply() {
-        if (!igVisible) { hideOverlay(); island.hide(); notifier.clear(); return }
+        if (!igVisible) { hideOverlay(); announce(AppGraph.state.gateNow(cfg)); return }
         val gate = AppGraph.state.gateNow(cfg)
         announce(gate)
         if (gate !is Gate.Closed) { hideOverlay(); return }
         showOverlay(bounds, model(gate))
     }
 
-    /** Says where you are: the island in the status bar, plus a quiet notification. No countdown. */
+    /**
+     * Says where things stand. The notification is always there (shade and lock screen) and lists the agents
+     * working; the island is the same thing in the status bar, only while a blocked app is open. No countdown.
+     */
     private fun announce(g: Gate) {
-        val app = BlockedApps.packages[blockedPkg] ?: "App"
-        when (g) {
-            is Gate.Open -> {
-                island.show(app, "Claude working", StatusIsland.Tone.Working)
-                notifier.show("In $app", "Claude is working")
-            }
-            is Gate.Bypass -> {
-                island.show(app, "Bypass", StatusIsland.Tone.Waiting)
-                notifier.show("In $app", "Bypass is on")
-            }
-            is Gate.Closed -> if (g.reason == ClosedReason.Checking) {
-                island.show(app, "Checking", StatusIsland.Tone.Waiting)
-                notifier.show("In $app", "Checking Claude…")
-            } else {
-                // The lock screen says it all; no island on top of it.
-                island.hide()
-                notifier.show("$app locked", "Claude isn't working")
+        val app = if (igVisible) BlockedApps.packages[blockedPkg] ?: "App" else null
+        val agents = if (g is Gate.Open) AppGraph.state.agentsNow() else emptyList()
+        val summary = AgentSummary.short(agents)
+        val (title, text) = when {
+            g is Gate.Open -> (app?.let { "In $it" } ?: "Apps unlocked") to summary.ifEmpty { "Claude is working" }
+            g is Gate.Bypass -> (app?.let { "In $it" } ?: "Bypass is on") to "Bypass is on"
+            g is Gate.Closed && g.reason == ClosedReason.Checking -> (app?.let { "In $it" } ?: "ScrollLock") to "Checking Claude…"
+            else -> (app?.let { "$it locked" } ?: "Apps locked") to "Claude isn't working"
+        }
+        val big = if (g is Gate.Open) AgentSummary.detailLines(agents, cfg.showTaskText).joinToString("\n") else ""
+        notifier.show(title, text, big, publicText = text)
+        when {
+            app == null -> island.hide()
+            g is Gate.Open -> island.show(app, AgentSummary.island(agents), StatusIsland.Tone.Working)
+            g is Gate.Bypass -> island.show(app, "Bypass", StatusIsland.Tone.Waiting)
+            g is Gate.Closed && g.reason == ClosedReason.Checking -> island.show(app, "Checking", StatusIsland.Tone.Waiting)
+            else -> island.hide() // the lock screen says it all
+        }
+    }
+
+    /**
+     * Keeps the notification true while no blocked app is open, without ticking: it republishes when new
+     * information arrives (a push, a fetch, a setting) and once more when an unlock is due to end.
+     */
+    private suspend fun keepNotificationCurrent() {
+        combine(AppGraph.settings.flow, AppGraph.state.snapshots, AppGraph.state.failed) { _, _, _ -> }.collectLatest {
+            val g = AppGraph.state.gateNow(cfg)
+            announce(g)
+            val left = when (g) { is Gate.Open -> g.remainingMs; is Gate.Bypass -> g.remainingMs; else -> 0L }
+            if (left > 0) {
+                delay(left + 200)
+                announce(AppGraph.state.gateNow(cfg))
             }
         }
     }
@@ -387,6 +421,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
         notifier.clear()
         unmuteMedia()
         screenReceiver?.let { runCatching { unregisterReceiver(it) } }
+        dismissReceiver?.let { runCatching { unregisterReceiver(it) } }
         scope.cancel()
         super.onDestroy()
     }

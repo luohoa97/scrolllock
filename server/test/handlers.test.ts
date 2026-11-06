@@ -126,3 +126,54 @@ describe("push", () => {
     expect((await handleRegisterDevice(post("/api/register-device", { token: "short" }, "r-token"), deps)).status).toBe(400);
   });
 });
+
+describe("agents and task progress", () => {
+  const status = async (deps: Deps) => (await (await handleStatus(get("/api/status", "r-token"), deps)).json()) as Status;
+  const ev = (deps: Deps, body: Record<string, unknown>) => handleEvent(post("/api/event", { session_id: "a", ...body }, "w-token"), deps);
+
+  it("lists every working agent with its own progress, newest first", async () => {
+    const { deps, clock } = mk();
+    await ev(deps, { event: "working", human: true, agent: "claude", lease_ms: 60_000 });
+    await ev(deps, { event: "progress", tasks_done: 3, tasks_total: 7, lease_ms: 60_000 });
+    clock.t += 1000;
+    await handleEvent(post("/api/event", { session_id: "b", event: "working", agent: "codex", lease_ms: 60_000 }, "w-token"), deps);
+    const st = await status(deps);
+    expect(st.agents).toEqual([
+      { agent: "codex", done: null, total: null, now: null, next: null },
+      { agent: "claude", done: 3, total: 7, now: null, next: null },
+    ]);
+    // later events keep the label and the counts
+    await ev(deps, { event: "heartbeat", lease_ms: 60_000 });
+    await ev(deps, { event: "tool_done", lease_ms: 60_000 });
+    expect((await status(deps)).agents.find((x) => x.agent === "claude")).toMatchObject({ done: 3, total: 7 });
+  });
+
+  it("keeps task text only when the sender sent it, trimmed and stripped of control characters", async () => {
+    const { deps } = mk();
+    await ev(deps, { event: "working", human: true, agent: "claude" });
+    await ev(deps, { event: "progress", tasks_done: 1, tasks_total: 3, tasks_now: "  write\n the\u0007 migration  ", tasks_next: "x".repeat(500) });
+    const a = (await status(deps)).agents[0]!;
+    expect(a.now).toBe("write the migration");
+    expect(a.next).toHaveLength(120);
+  });
+
+  it("ignores a bad agent label, and never lists a locked session or lets progress unlock", async () => {
+    const { deps } = mk();
+    await ev(deps, { event: "progress", tasks_done: 1, tasks_total: 4, agent: "claude" });
+    const st = await status(deps);
+    expect(st.working).toBe(false);
+    expect(st.agents).toEqual([]);
+    await ev(deps, { event: "working", agent: "<script>" });
+    expect((await status(deps)).agents[0]!.agent).toBe("Agent");
+  });
+
+  it("clears the task list on end and clamps nonsense", async () => {
+    const { deps } = mk();
+    await ev(deps, { event: "working", human: true, agent: "claude" });
+    await ev(deps, { event: "progress", tasks_done: 99, tasks_total: 5 });
+    expect((await status(deps)).agents[0]!).toMatchObject({ done: 5, total: 5 });
+    await ev(deps, { event: "end" });
+    await ev(deps, { event: "working", human: true });
+    expect((await status(deps)).agents[0]!).toMatchObject({ done: null, total: null });
+  });
+});
