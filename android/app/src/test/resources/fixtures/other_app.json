@@ -1,0 +1,25 @@
+{
+ "_note": "SYNTHETIC: shaped from memory of Instagram's accessibility tree, not captured from a device. Replace with a real dump (Settings > Dump tree) before trusting.",
+ "package": "com.example.other",
+ "screen": [
+  0,
+  0,
+  1080,
+  2400
+ ],
+ "nodes": [
+  {
+   "id": "android:id/content",
+   "cls": "android.widget.FrameLayout",
+   "desc": null,
+   "selected": false,
+   "depth": 0,
+   "b": [
+    0,
+    0,
+    1080,
+    2400
+   ]
+  }
+ ]
+}

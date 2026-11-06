@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ScrollLock</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { max-width: 520px; margin: 40px auto; padding: 0 16px; line-height: 1.5; }
+  label { display: block; margin-top: 16px; font-size: 14px; }
+  input[type=text], input[type=password], input[type=number], select { width: 100%; box-sizing: border-box; padding: 8px 10px; font: inherit; margin-top: 4px; }
+  .row { display: flex; gap: 12px; align-items: center; }
+  button { margin-top: 20px; padding: 10px 18px; font: inherit; border-radius: 20px; border: 0; cursor: pointer; }
+  #msg { margin-top: 12px; min-height: 1.5em; }
+  small { opacity: .7; }
+</style>
+<h1>ScrollLock</h1>
+<p>Blocks Instagram on instagram.com until Claude is working. Messages always work.</p>
+<label>Relay URL <input id="relayUrl" type="text" placeholder="https://your-relay.vercel.app" autocomplete="off"></label>
+<label>Read token <input id="readToken" type="password" autocomplete="off"></label>
+<label>Unlock rule
+  <select id="mode">
+    <option value="claude_busy">While Claude is working</option>
+    <option value="my_turn">While it's my turn (after I prompt)</option>
+  </select>
+</label>
+<div class="row">
+  <label>My-turn minutes <input id="minutes" type="number" min="1" max="240" value="15"></label>
+  <label>Grace seconds <input id="grace" type="number" min="0" max="120" value="10"></label>
+</div>
+<button id="save">Save and test</button>
+<div id="msg"></div>
+<small>The token is stored in this browser only and is sent only to your relay.</small>
+<script src="options.js"></script>
+</html>
