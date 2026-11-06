@@ -127,7 +127,7 @@ Run these once, in order. `fake-claude` is in `scripts/` (see "Fish helpers").
 7. Tap "Back to Claude". The Claude app comes to the front on whatever it was showing. It must not start a new chat.
 8. Settings, "Allow one 5 minute bypass a day": it can't be switched on while locked, only while `fake-claude working` is running. Switch it on, then `fake-claude idle`: the lock screen now has a Bypass button, good for 5 minutes, once a day.
 9. Turn the phone's clock forward an hour. A locked phone stays locked, and a bypass doesn't last longer.
-10. Audio stops under the overlay (the phone's media volume is muted while the lock is up and restored after). Watch for the blur: it must be there every time, even with battery saver on.
+10. Audio under the overlay: ScrollLock asks the app to pause (audio focus), and does not touch your media volume. Whether the app listens is unverified. Watch for the blur: it must be there every time, even with battery saver on.
 11. Settings, Debug, Capture next Instagram screen in 5s. Open Reels. A toast says the dump was copied.
 12. With Lockdown on: App info for ScrollLock bounces you to the home screen, and Uninstall is greyed out.
 

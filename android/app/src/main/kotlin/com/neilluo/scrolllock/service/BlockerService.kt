@@ -42,7 +42,11 @@ import kotlinx.coroutines.launch
  */
 class BlockerService : AccessibilityService(), OverlayActions {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    // An exception in a coroutine here would otherwise crash the service and leave Instagram open.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate +
+            kotlinx.coroutines.CoroutineExceptionHandler { _, e -> android.util.Log.e("ScrollLock", "coroutine failed", e) },
+    )
     private lateinit var overlay: OverlayController
     private lateinit var engine: DetectionEngine
     private var cfg = Settings()
@@ -68,21 +72,30 @@ class BlockerService : AccessibilityService(), OverlayActions {
         engine = DetectionEngine(rules)
         scope.launch { AppGraph.settings.flow.collect { s -> cfg = s } }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        restoreStaleMute()
-        screenReceiver = object : BroadcastReceiver() {
-            override fun onReceive(c: Context?, i: Intent?) { nudges.trySend(Unit) }
-        }.also {
-            registerReceiver(it, IntentFilter().apply {
-                addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT)
-            })
-        }
+        log("service connected")
+        // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             while (true) {
-                pollOnce()
-                // Event-driven when Instagram is off screen. Heartbeat only while it is on screen.
+                runCatching { pollOnce() }.onFailure { android.util.Log.e("ScrollLock", "poll failed", it) }
+                // Event-driven when a blocked app is off screen. Heartbeat only while one is on screen.
                 if (igVisible) withTimeoutOrNull(HEARTBEAT_MS) { nudges.receive() } else nudges.receive()
             }
         }
+        runCatching { restoreStaleMute() }
+        // Wake on screen-on, since no window event may fire when the phone wakes into a blocked app.
+        // Android 14+ refuses a receiver registered without an exported flag.
+        runCatching {
+            screenReceiver = object : BroadcastReceiver() {
+                override fun onReceive(c: Context?, i: Intent?) { nudges.trySend(Unit) }
+            }.also {
+                androidx.core.content.ContextCompat.registerReceiver(
+                    this,
+                    it,
+                    IntentFilter().apply { addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT) },
+                    androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+                )
+            }
+        }.onFailure { android.util.Log.e("ScrollLock", "screen receiver failed", it) }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -219,7 +232,6 @@ class BlockerService : AccessibilityService(), OverlayActions {
         val gate = AppGraph.state.gateNow(cfg)
         if (gate !is Gate.Closed) { hideOverlay(); return }
         showOverlay(bounds, model(gate))
-        if (overlay.isShowing) muteMedia()
     }
 
     private fun model(g: Gate.Closed) = OverlayModel(
@@ -262,7 +274,6 @@ class BlockerService : AccessibilityService(), OverlayActions {
                 log("overlay up (snapshot=${shot != null})")
             }
             overlay.show(bounds, model(gate), shot)
-            muteMedia()
         }
         val started = runCatching {
             takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
@@ -280,20 +291,6 @@ class BlockerService : AccessibilityService(), OverlayActions {
         else scope.launch { delay(CAPTURE_TIMEOUT_MS); finish(null) }
     }
 
-    /**
-     * Stops Instagram's sound. The overlay hides a Reel but not its audio, and a plain app can't
-     * mute another app, so this mutes the phone's media stream while the lock is up and unmutes it
-     * after. Anything else playing media is silenced too. Android keeps the previous volume.
-     */
-    private fun muteMedia() {
-        val am = getSystemService(android.media.AudioManager::class.java) ?: return
-        val stream = android.media.AudioManager.STREAM_MUSIC
-        if (am.isStreamMute(stream)) return // already silent: either us, or the user's own mute
-        runCatching { am.adjustStreamVolume(stream, android.media.AudioManager.ADJUST_MUTE, 0) }
-        weMuted = true
-        getSharedPreferences("mute", MODE_PRIVATE).edit().putBoolean("byUs", true).apply()
-    }
-
     private fun unmuteMedia() {
         if (!weMuted) return
         weMuted = false
@@ -304,15 +301,16 @@ class BlockerService : AccessibilityService(), OverlayActions {
         }
     }
 
-    /** If the service died while it had the stream muted, undo that on the next start. */
+    /** v8 muted the whole media stream while locked. If an install from then died muted, undo it. */
     private fun restoreStaleMute() {
         val prefs = getSharedPreferences("mute", MODE_PRIVATE)
         if (prefs.getBoolean("byUs", false)) { weMuted = true; unmuteMedia() }
     }
 
     /**
-     * The blur hides a Reel but does not stop its sound. Taking audio focus asks Instagram's player
-     * to pause. Unverified on a real phone: it relies on Instagram honouring the focus loss.
+     * The blur hides a Reel but does not stop its sound. Taking audio focus asks the app's player to
+     * pause. It is a request, not enforcement: an app that ignores focus loss keeps playing. A hard
+     * per-app mute needs a shell-level grant (Shizuku or on-device wireless ADB) that this app lacks.
      */
     private fun takeAudioFocus() {
         val am = getSystemService(android.media.AudioManager::class.java) ?: return
