@@ -11,11 +11,8 @@ data class BypassState(
 )
 
 object BypassPolicy {
-    /**
-     * The bypass is switched off. A setting to turn it on would be the loophole it is meant to
-     * close, since turning it on takes one tap. To bring it back, change this and rebuild.
-     */
-    const val AVAILABLE = false
+    // The bypass is armed by a setting, and the setting can only be switched ON while Claude is
+    // working (StateRepository.setBypassEnabled). So it can't be armed on impulse while locked.
 
     const val DURATION_MS = 5 * 60_000L
 

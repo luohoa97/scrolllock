@@ -79,9 +79,23 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Section("While locked") {
             Text(
-                "All of Instagram is blocked except messages. A screen ScrollLock doesn't recognise is blocked too.",
+                "All of Instagram is blocked, messages included. It is blurred, muted and can't be used.",
                 style = MaterialTheme.typography.bodyMedium,
             )
+            val gate by AppGraph.state.gate.collectAsStateWithLifecycle()
+            val claudeWorking = gate is com.neilluo.scrolllock.data.Gate.Open
+            ToggleRow(
+                "Allow one 5 minute bypass a day",
+                s.bypassEnabled,
+                enabled = s.bypassEnabled || claudeWorking,
+            ) { on -> scope.launch { AppGraph.state.setBypassEnabled(on) } }
+            if (!s.bypassEnabled && !claudeWorking) {
+                Text(
+                    "Locked. This can only be switched on while Claude is working.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         Section("Relay") { RelayEditor(s) }
@@ -193,14 +207,14 @@ private fun ModeRow(label: String, detail: String, selected: Boolean, onClick: (
 }
 
 @Composable
-private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun ToggleRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().toggleable(checked, role = Role.Switch, onValueChange = onChange),
+        Modifier.fillMaxWidth().toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        Switch(checked, onCheckedChange = null)
+        Switch(checked, onCheckedChange = null, enabled = enabled)
     }
 }
 

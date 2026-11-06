@@ -72,15 +72,22 @@ class StateRepository(
     }
 
     /** One bypass per calendar day, where "day" comes from the relay's clock when we have it. */
-    suspend fun canBypass(): Boolean {
-        val s = settings.current()
-        return BypassPolicy.AVAILABLE && BypassPolicy.canUse(s.bypass, today())
+    fun canBypassNow(s: Settings): Boolean = s.bypassEnabled && BypassPolicy.canUse(s.bypass, today())
+
+    /**
+     * Turning the bypass off is always allowed. Turning it on needs Claude to be working right now,
+     * so the one tap that arms it can't happen while Instagram is locked.
+     */
+    suspend fun setBypassEnabled(on: Boolean): Boolean {
+        if (on && gateNow(settings.current()) !is Gate.Open) return false
+        settings.setBypassEnabled(on)
+        return true
     }
 
     suspend fun startBypass(): Boolean {
         val s = settings.current()
         val today = today()
-        if (!BypassPolicy.AVAILABLE || !BypassPolicy.canUse(s.bypass, today)) return false
+        if (!canBypassNow(s)) return false
         settings.setBypass(BypassPolicy.start(bootCount(), elapsed(), today))
         stats.addBypass(today)
         return true

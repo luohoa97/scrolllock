@@ -2,7 +2,7 @@
 
 <!-- Intro goes here. Neil writes this part. -->
 
-Instagram stays blocked unless a Claude Code session is working. All of it: feed, Reels, Explore and messages. ScrollLock doesn't need to recognise any screen to do this.
+Instagram, YouTube, TikTok, Snapchat and Facebook stay blocked unless a Claude Code session is working. The whole app is blurred, muted and unusable, with no screen detection to get wrong. Discord is left alone. The list is `BLOCKED` in `BlockerService.kt`; check the package names against your phone with `adb shell pm list packages`.
 
 | Piece | What it does |
 | --- | --- |
@@ -118,16 +118,16 @@ On the phone:
 
 Run these once, in order. `fake-claude` is in `scripts/` (see "Fish helpers").
 
-1. `fake-claude idle`, then open Instagram. Blur screen appears at once: "Instagram locked / Claude isn't working / 8s".
+1. `fake-claude idle`, then open Instagram. A blurred screen appears at once: "Instagram locked / Claude isn't working / 8s". Try YouTube, TikTok, Snapchat and Facebook too.
 2. Same screen on Reels, Explore and Messages. It stays up (it must not drop after a second).
-3. Leave Instagram for another app. The overlay goes. Come back and it returns.
+3. Leave the app for another one. The overlay goes. Come back, or open it from Recents or split screen, and it returns. In split screen only that app's half is covered.
 4. Back on Reels with the screen still locked, run `fake-claude working`. The overlay lifts within about two seconds (push) or when you reopen Instagram (no push).
 5. `fake-claude idle`. About ten seconds later (the grace period) Reels locks again.
 6. Stop sending anything. After about 90 seconds an unlocked phone locks again on its own.
 7. Tap "Back to Claude". The Claude app comes to the front on whatever it was showing. It must not start a new chat.
-8. The lock screen has no bypass button, and the app has no setting that adds one.
+8. Settings, "Allow one 5 minute bypass a day": it can't be switched on while locked, only while `fake-claude working` is running. Switch it on, then `fake-claude idle`: the lock screen now has a Bypass button, good for 5 minutes, once a day.
 9. Turn the phone's clock forward an hour. A locked phone stays locked, and a bypass doesn't last longer.
-10. Reels audio stops under the overlay.
+10. Audio stops under the overlay (the phone's media volume is muted while the lock is up and restored after). Watch for the blur: it must be there every time, even with battery saver on.
 11. Settings, Debug, Capture next Instagram screen in 5s. Open Reels. A toast says the dump was copied.
 12. With Lockdown on: App info for ScrollLock bounces you to the home screen, and Uninstall is greyed out.
 
@@ -155,7 +155,8 @@ The Settings guard reads the labels on Settings screens, only while Lockdown is 
 
 ## What the app can see
 
-- Window changes from every app, to learn when Instagram leaves the front. Only the package name is kept.
+- Which windows are on screen and their package names and bounds, to find a blocked app and cover only its window.
+- One screenshot of the display each time the lock screen goes up, used only to draw the blurred background. It stays in memory, is never saved or sent, and is dropped when the lock screen goes.
 - Instagram's screen structure, only in the optional messages mode or when you ask for a debug dump: view ids, class names, content descriptions, which tab is selected, sizes. Never the text of messages or text fields.
 - Nothing is sent anywhere except the relay: your read token to ask for status, and your push token to register.
 

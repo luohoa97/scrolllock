@@ -23,6 +23,8 @@ data class Settings(
     val graceSeconds: Int = 10,
     val onboarded: Boolean = false,
     val lockdown: Boolean = false,
+    /** Armed bypass. Can only be switched on while Claude is working (see StateRepository). */
+    val bypassEnabled: Boolean = false,
     val coolingOffHours: Int = 24,
     val unlockRequest: UnlockRequest? = null,
     val bypass: BypassState? = null,
@@ -43,6 +45,7 @@ class SettingsStore(private val context: Context) {
         val graceSeconds = intPreferencesKey("graceSeconds")
         val onboarded = booleanPreferencesKey("onboarded")
         val lockdown = booleanPreferencesKey("lockdown")
+        val bypassEnabled = booleanPreferencesKey("bypassEnabled")
         val coolingOffHours = intPreferencesKey("coolingOffHours")
         val reqBoot = intPreferencesKey("unlockReqBoot")
         val reqElapsed = longPreferencesKey("unlockReqElapsed")
@@ -62,6 +65,7 @@ class SettingsStore(private val context: Context) {
             graceSeconds = p[K.graceSeconds] ?: 10,
             onboarded = p[K.onboarded] ?: false,
             lockdown = p[K.lockdown] ?: false,
+            bypassEnabled = p[K.bypassEnabled] ?: false,
             coolingOffHours = p[K.coolingOffHours] ?: 24,
             unlockRequest = p[K.reqElapsed]?.let { UnlockRequest(p[K.reqBoot] ?: 0, it) },
             bypass = p[K.bypassDay]?.let { BypassState(p[K.bypassBoot] ?: 0, p[K.bypassUntil] ?: 0, it) },
@@ -87,6 +91,8 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setOnboarded(v: Boolean) = context.dataStore.edit { it[K.onboarded] = v }
     suspend fun setLockdown(v: Boolean) = context.dataStore.edit { it[K.lockdown] = v }
+
+    suspend fun setBypassEnabled(v: Boolean) = context.dataStore.edit { it[K.bypassEnabled] = v }
     suspend fun setCoolingOffHours(h: Int) = context.dataStore.edit { it[K.coolingOffHours] = h.coerceIn(1, 168) }
 
     suspend fun setUnlockRequest(r: UnlockRequest?) = context.dataStore.edit {
