@@ -14,6 +14,27 @@ const status = async (st: MemoryStore, now: number) =>
   computeStatus(await st.listSessions(), now, cfg, Number(await st.getMeta("lastEventAt")));
 
 describe("applyEvent", () => {
+  it("a hook can ask for a short lease, and beats keep it alive", async () => {
+    const st = await setup();
+    await applyEvent(st, { sessionId: "a", event: "working", human: true, leaseMs: 10_000 }, T0);
+    expect((await st.getSession("a"))!.leaseUntil).toBe(T0 + 10_000);
+    const row = await applyEvent(st, { sessionId: "a", event: "beat", leaseMs: 10_000 }, T0 + 3_000);
+    expect(row.leaseUntil).toBe(T0 + 13_000);
+    expect(row.workingSince).toBe(T0);
+    // Beats stop (the session died): it locks exactly at the last lease, no grace.
+    expect((await status(st, T0 + 13_001)).working).toBe(false);
+  });
+
+  it("a beat after Stop, or for an unknown session, never unlocks anything", async () => {
+    const st = await setup();
+    await applyEvent(st, { sessionId: "a", event: "working", human: true }, T0);
+    await applyEvent(st, { sessionId: "a", event: "idle" }, T0 + 1_000);
+    const row = await applyEvent(st, { sessionId: "a", event: "beat", leaseMs: 10_000 }, T0 + 2_000);
+    expect(row.state).toBe("idle");
+    await applyEvent(st, { sessionId: "ghost", event: "beat", leaseMs: 10_000 }, T0 + 2_000);
+    expect((await status(st, T0 + 12_000)).working).toBe(false); // past the 10s grace
+  });
+
   it("working creates a session with a 90s lease and records the human prompt", async () => {
     const st = await setup();
     const row = await applyEvent(st, { sessionId: "a", event: "working", human: true }, T0);

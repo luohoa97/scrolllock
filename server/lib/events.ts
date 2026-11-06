@@ -7,12 +7,13 @@ import type { EventName, SessionRow, Store } from "./types";
  */
 export async function applyEvent(
   store: Store,
-  ev: { sessionId: string; event: EventName; human?: boolean },
+  ev: { sessionId: string; event: EventName; human?: boolean; leaseMs?: number },
   now: number,
 ): Promise<SessionRow> {
   const prev = await store.getSession(ev.sessionId);
   const wasWorking = prev !== null && prev.state === "working" && prev.leaseUntil > now;
   const keepSince = wasWorking ? (prev.workingSince ?? prev.lastSeen) : now;
+  const lease = ev.leaseMs ?? LEASE_MS;
 
   let row: SessionRow;
   switch (ev.event) {
@@ -33,7 +34,7 @@ export async function applyEvent(
         sessionId: ev.sessionId,
         state: "working",
         lastSeen: now,
-        leaseUntil: now + LEASE_MS,
+        leaseUntil: now + lease,
         workingSince: keepSince,
         lastUserPromptAt: ev.human ? now : (prev?.lastUserPromptAt ?? null),
         lastEvent: "working",
@@ -44,7 +45,7 @@ export async function applyEvent(
         sessionId: ev.sessionId,
         state: "working",
         lastSeen: now,
-        leaseUntil: now + TOOL_LEASE_MS,
+        leaseUntil: now + (ev.leaseMs ?? TOOL_LEASE_MS),
         workingSince: keepSince,
         lastUserPromptAt: prev?.lastUserPromptAt ?? null,
         lastEvent: "heartbeat",
@@ -52,7 +53,13 @@ export async function applyEvent(
       break;
     case "tool_done":
       if (!prev || !wasWorking) return prev ?? emptyIdle(ev.sessionId, now); // late PostToolUse after Stop: ignore
-      row = { ...prev, lastSeen: now, leaseUntil: now + LEASE_MS, lastEvent: "tool_done" };
+      row = { ...prev, lastSeen: now, leaseUntil: now + lease, lastEvent: "tool_done" };
+      break;
+    case "beat":
+      // A keep-alive from the hook's background loop. It only extends a session that is already
+      // working: a stray beat after Stop, or from a dead session's leftover loop, can't unlock anything.
+      if (!prev || !wasWorking) return prev ?? emptyIdle(ev.sessionId, now);
+      row = { ...prev, lastSeen: now, leaseUntil: now + lease, lastEvent: "beat" };
       break;
     case "idle":
     case "end":

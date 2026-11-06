@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -36,7 +35,7 @@ import androidx.graphics.shapes.toPath
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,14 +48,32 @@ import com.neilluo.scrolllock.AppGraph
 import com.neilluo.scrolllock.data.Gate
 import com.neilluo.scrolllock.data.StatsSummary
 import com.neilluo.scrolllock.data.TimeFormat
-import kotlinx.coroutines.launch
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun StatusScreen(modifier: Modifier = Modifier) {
     val gate by AppGraph.state.gate.collectAsStateWithLifecycle()
     val stats by AppGraph.stats.summary.collectAsStateWithLifecycle(initialValue = null)
-    val scope = rememberCoroutineScope()
+    // The relay state lives in memory, so a fresh process has none. Ask on open and whenever the
+    // screen comes back, and keep it current only while it's on screen: refresh when the answer
+    // is missing, locked (no push), or the unlock is about to run out. Nothing runs when it's closed.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            AppGraph.state.refresh()
+            while (true) {
+                delay(3_000)
+                val s = AppGraph.settings.current()
+                val g = AppGraph.state.gateNow(s)
+                val age = AppGraph.state.ageMs()
+                if (age == null || age > 120_000 || g is Gate.Closed || (g is Gate.Open && g.remainingMs < 5_000)) {
+                    AppGraph.state.refresh()
+                }
+            }
+        }
+    }
 
     val morph = remember { Morph(MaterialShapes.Cookie9Sided, MaterialShapes.Sunny) }
     val progress by animateFloatAsState(if (gate.isOpen) 1f else 0f, label = "hero")
@@ -84,7 +101,6 @@ fun StatusScreen(modifier: Modifier = Modifier) {
         Text(Describe.headline(gate), style = MaterialTheme.typography.headlineMediumEmphasized, fontWeight = FontWeight.SemiBold)
         Text(Describe.detail(gate), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
-        FilledTonalButton(onClick = { scope.launch { AppGraph.state.refresh() } }) { Text("Refresh now") }
         Spacer(Modifier.height(16.dp))
         stats?.let { StatsCard(it) }
         Spacer(Modifier.height(8.dp))

@@ -1,6 +1,9 @@
 /** Server-side timing. The unlock rules in unlock.ts read these as defaults. */
 export const LEASE_MS = 90_000; // a working session with no news for this long counts as dead
 export const TOOL_LEASE_MS = 10 * 60_000; // a tool is running: allow a long silence
+/** A hook may ask for a shorter or longer lease per event (lease_ms). Clamped to this range. */
+export const MIN_LEASE_MS = 3_000;
+export const MAX_LEASE_MS = 120_000;
 export const DEFAULT_GRACE_SECONDS = 10; // idle only reports locked after this, so back-to-back turns don't flap
 export const DEFAULT_MY_TURN_MINUTES = 15;
 export const STALE_RELAY_MS = 24 * 60 * 60_000; // no hook events for a day: hooks probably broken

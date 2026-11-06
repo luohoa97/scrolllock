@@ -31,6 +31,10 @@ import com.neilluo.scrolllock.ui.StatusScreen
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The "where you are" notification needs this on Android 13+.
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
         enableEdgeToEdge()
         setContent { ScrollLockTheme { Root() } }
     }

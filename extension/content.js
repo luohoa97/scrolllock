@@ -63,8 +63,9 @@
       now,
       bypassRemainingMs: Gate.bypassRemaining(cfg.bypass, Date.now()),
     });
-    // Ask the relay often while locked so an unlock lands fast, rarely while open.
-    const every = gate.kind === "closed" ? 3000 : 20000;
+    // Ask the relay often while locked so an unlock lands fast. While open, ask again just before the
+    // lease runs out (leases can be a few seconds), otherwise only now and then.
+    const every = gate.kind === "closed" ? 3000 : gate.kind === "open" && gate.remainingMs < 5000 ? 2000 : 20000;
     if (configured() && now - lastFetch >= every) refresh();
 
     if (gate.kind === "closed") showOverlay(gate);

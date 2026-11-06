@@ -1,6 +1,7 @@
 package com.neilluo.scrolllock.data
 
-enum class ClosedReason { Idle, LeaseExpired, RelayUnreachable, PromptWindowExpired, NoEvents, NoSetup }
+/** [Checking] is "nothing heard yet": a fresh process before its first answer, not a verdict about Claude. */
+enum class ClosedReason { Idle, LeaseExpired, RelayUnreachable, PromptWindowExpired, NoEvents, NoSetup, Checking }
 
 /** The one answer the rest of the app needs: is Instagram open right now, and why not. */
 sealed interface Gate {
@@ -24,7 +25,7 @@ object GateLogic {
     ): Gate {
         if (bypassRemainingMs > 0) return Gate.Bypass(bypassRemainingMs)
         if (!configured) return Gate.Closed(ClosedReason.NoSetup, null)
-        if (snapshot == null) return Gate.Closed(ClosedReason.RelayUnreachable, null)
+        if (snapshot == null) return Gate.Closed(if (lastFetchFailed) ClosedReason.RelayUnreachable else ClosedReason.Checking, null)
 
         val sinceReceipt = (nowElapsed - snapshot.receivedElapsed).coerceAtLeast(0)
         if (snapshot.working) {

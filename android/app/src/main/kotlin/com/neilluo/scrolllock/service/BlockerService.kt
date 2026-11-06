@@ -46,6 +46,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             kotlinx.coroutines.CoroutineExceptionHandler { _, e -> android.util.Log.e("ScrollLock", "coroutine failed", e) },
     )
     private lateinit var overlay: OverlayController
+    private lateinit var notifier: StatusNotifier
     private lateinit var engine: DetectionEngine
     private var cfg = Settings()
     private var rules = com.neilluo.scrolllock.detect.Rules()
@@ -65,11 +66,12 @@ class BlockerService : AccessibilityService(), OverlayActions {
         // whose service config the system hasn't re-read.
         serviceInfo = serviceInfo?.apply { flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
         overlay = OverlayController(this, this)
+        notifier = StatusNotifier(this)
         rules = RulesLoader.load(this)
         engine = DetectionEngine(rules)
         scope.launch { AppGraph.settings.flow.collect { s -> cfg = s } }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected, build 0.1.10")
+        log("service connected, build 0.1.12")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             var settle = 0
@@ -172,16 +174,26 @@ class BlockerService : AccessibilityService(), OverlayActions {
             launch { AppGraph.state.refresh() }
             // The gate only needs a clock tick while Instagram is on screen.
             launch { AppGraph.state.gate.collect { apply() } }
-            // Safety net: if no push has arrived for two minutes, ask the relay directly. Without
-            // Firebase there are no pushes at all, so while Instagram is up and locked, ask every
-            // few seconds so an unlock lands without pressing refresh.
+            // Asks the relay directly when it needs to, only while a blocked app is on screen:
+            //  - locked and no Firebase (so no pushes): every few seconds, so an unlock lands at once;
+            //  - unlocked and the lease is about to run out: leases can be a few seconds, and a push
+            //    only says "working" once, so ask again before it ends;
+            //  - nothing heard for two minutes: a safety refresh.
             launch {
                 val pushless = !AppGraph.fcm.firebaseAvailable()
+                var lastTry = 0L
                 while (true) {
-                    delay(if (pushless) PUSHLESS_POLL_MS else SAFETY_FETCH_MS)
+                    delay(1_000)
+                    val now = android.os.SystemClock.elapsedRealtime()
                     val age = AppGraph.state.ageMs()
-                    val locked = AppGraph.state.gateNow(cfg) is Gate.Closed
-                    if (age == null || age > STALE_PUSH_MS || (pushless && locked)) AppGraph.state.refresh()
+                    val g = AppGraph.state.gateNow(cfg)
+                    val due = age == null || age > STALE_PUSH_MS ||
+                        (g is Gate.Closed && pushless) ||
+                        (g is Gate.Open && g.remainingMs < REFRESH_AHEAD_MS)
+                    if (due && now - lastTry >= MIN_REFRESH_GAP_MS) {
+                        lastTry = now
+                        AppGraph.state.refresh()
+                    }
                 }
             }
         }
@@ -235,10 +247,23 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     /** One place decides whether the overlay is up: Instagram visible and the gate closed. */
     private fun apply() {
-        if (!igVisible) { hideOverlay(); return }
+        if (!igVisible) { hideOverlay(); notifier.clear(); return }
         val gate = AppGraph.state.gateNow(cfg)
+        announce(gate)
         if (gate !is Gate.Closed) { hideOverlay(); return }
         showOverlay(bounds, model(gate))
+    }
+
+    /** Says where you are in the notification / island: which app, and when it locks. */
+    private fun announce(g: Gate) {
+        val app = BlockedApps.packages[blockedPkg] ?: "App"
+        val wall = System.currentTimeMillis()
+        when (g) {
+            is Gate.Open -> notifier.show("In $app", "Claude is working · locks in", wall + g.remainingMs)
+            is Gate.Bypass -> notifier.show("In $app", "Bypass on · ends in", wall + g.remainingMs)
+            is Gate.Closed -> if (g.reason == ClosedReason.Checking) notifier.show("In $app", "Checking Claude…", null)
+                else notifier.show("$app locked", "Claude isn't working", null, chip = "Locked")
+        }
     }
 
     private fun model(g: Gate.Closed) = OverlayModel(
@@ -247,6 +272,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
             when (g.reason) {
                 ClosedReason.RelayUnreachable -> R.string.overlay_relay_down
                 ClosedReason.NoSetup -> R.string.overlay_no_setup
+                ClosedReason.Checking -> R.string.overlay_checking
                 else -> R.string.overlay_claude_idle
             },
         ),
@@ -344,6 +370,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     override fun onDestroy() {
         hideOverlay()
+        notifier.clear()
         unmuteMedia()
         screenReceiver?.let { runCatching { unregisterReceiver(it) } }
         scope.cancel()
@@ -356,8 +383,8 @@ class BlockerService : AccessibilityService(), OverlayActions {
         val SETTLE_MS = longArrayOf(100, 250, 500, 1_000, 2_000, 4_000)
         const val CAPTURE_TIMEOUT_MS = 700L
         const val GUARD_DELAY_MS = 350L
-        const val SAFETY_FETCH_MS = 30_000L
-        const val PUSHLESS_POLL_MS = 3_000L
+        const val REFRESH_AHEAD_MS = 5_000L
+        const val MIN_REFRESH_GAP_MS = 2_500L
         const val STALE_PUSH_MS = 120_000L
     }
 }

@@ -1,5 +1,5 @@
 import { hasToken } from "./auth";
-import { DEFAULT_GRACE_SECONDS, DEFAULT_MY_TURN_MINUTES, KEEP_IDLE_ROWS_MS, META_LAST_EVENT_AT } from "./config";
+import { DEFAULT_GRACE_SECONDS, DEFAULT_MY_TURN_MINUTES, KEEP_IDLE_ROWS_MS, LEASE_MS, MAX_LEASE_MS, META_LAST_EVENT_AT, MIN_LEASE_MS } from "./config";
 import { applyEvent } from "./events";
 import type { Pusher } from "./fcm";
 import { pushChanges } from "./push";
@@ -34,7 +34,7 @@ const clampInt = (v: unknown, min: number, max: number, fallback: number): numbe
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
 };
 
-/** POST /api/event  {session_id, event, human?}  (write token) */
+/** POST /api/event  {session_id, event, human?, lease_ms?}  (write token) */
 export async function handleEvent(req: Request, d: Deps): Promise<Response> {
   if (!hasToken(req, d.env.WRITE_TOKEN)) return unauthorized();
   const body = await readJson(req);
@@ -45,7 +45,8 @@ export async function handleEvent(req: Request, d: Deps): Promise<Response> {
   if (typeof event !== "string" || !(EVENT_NAMES as readonly string[]).includes(event)) return bad("event");
 
   const now = d.now();
-  await applyEvent(d.store, { sessionId, event: event as EventName, human: body.human === true }, now);
+  const leaseMs = body.lease_ms === undefined ? undefined : clampInt(body.lease_ms, MIN_LEASE_MS, MAX_LEASE_MS, LEASE_MS);
+  await applyEvent(d.store, { sessionId, event: event as EventName, human: body.human === true, leaseMs }, now);
   await pushChanges(d.store, d.pusher, now);
   return json({ ok: true });
 }
