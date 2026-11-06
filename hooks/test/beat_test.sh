@@ -34,4 +34,14 @@ sleep 1.5
 n2=$(beats); sleep 3.5; n3=$(beats)
 check "no beats after Stop" "$n3" "$n2"
 check "last event is idle" "$(tail -n 1 "$work/req.jsonl" | grep -c idle | awk '{print ($1>=1)?"yes":"no"}')" yes
+
+# Other tools: Gemini CLI event names and Codex's Interrupt map onto the same events.
+ev() { tail -n 1 "$work/req.jsonl" | grep -o 'event\\":\\"[a-z_]*' | sed 's/.*"//'; }
+hook '{"session_id":"g1","hook_event_name":"BeforeAgent","prompt":"go"}' >/dev/null; sleep 0.6
+check "Gemini BeforeAgent is working" "$(ev)" working
+hook '{"session_id":"g1","hook_event_name":"AfterAgent"}' >/dev/null; sleep 0.6
+check "Gemini AfterAgent is idle" "$(ev)" idle
+hook '{"session_id":"c1","hook_event_name":"UserPromptSubmit","prompt":"go"}' >/dev/null; sleep 0.6
+hook '{"session_id":"c1","hook_event_name":"Interrupt"}' >/dev/null; sleep 0.6
+check "Codex Interrupt is idle" "$(ev)" idle
 [ "$fail" = 0 ] && echo "all passed" || { echo "SOME FAILED"; exit 1; }

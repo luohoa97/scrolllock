@@ -47,4 +47,11 @@ a="$(sed -n "/<<'HOOK'/,/^HOOK\$/p" "$here/../install.sh")"
 b="$(sed -n "/<<'HOOK'/,/^HOOK\$/p" "$here/../cloud-setup-snippet.sh")"
 check "install.sh and cloud-setup-snippet.sh embed the same hook" "$a" "$b"
 
+
+# 7. Other tools: SL_EVENTS and SL_TIMEOUT pick the events and the timeout unit (Gemini CLI uses milliseconds)
+rm -f "$work/g.json"
+SL_BIN="$work/bin/scrolllock-hook" SL_SET="$work/g.json" SL_EVENTS="SessionStart BeforeAgent AfterAgent" SL_TIMEOUT=5000 sh "$inst" >/dev/null
+check "env: only the chosen events" "$(python3 -c 'import json;print(",".join(sorted(json.load(open("'"$work"'/g.json"))["hooks"])))')" "AfterAgent,BeforeAgent,SessionStart"
+check "env: timeout carried over" "$(python3 -c 'import json;print(json.load(open("'"$work"'/g.json"))["hooks"]["BeforeAgent"][0]["hooks"][0]["timeout"])')" 5000
+
 [ "$fail" = 0 ] && echo "all passed" || { echo "FAILED"; exit 1; }

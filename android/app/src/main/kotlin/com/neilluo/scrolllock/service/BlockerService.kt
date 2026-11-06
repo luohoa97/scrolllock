@@ -47,6 +47,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
     )
     private lateinit var overlay: OverlayController
     private lateinit var notifier: StatusNotifier
+    private lateinit var island: StatusIsland
     private lateinit var engine: DetectionEngine
     private var cfg = Settings()
     private var rules = com.neilluo.scrolllock.detect.Rules()
@@ -67,11 +68,12 @@ class BlockerService : AccessibilityService(), OverlayActions {
         serviceInfo = serviceInfo?.apply { flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
         overlay = OverlayController(this, this)
         notifier = StatusNotifier(this)
+        island = StatusIsland(this)
         rules = RulesLoader.load(this)
         engine = DetectionEngine(rules)
         scope.launch { AppGraph.settings.flow.collect { s -> cfg = s } }
         scope.launch { AppGraph.fcm.ensureRegistered() }
-        log("service connected, build 0.1.12")
+        log("service connected, build 0.1.13")
         // The loop starts first: nothing below it may stop the lock from running.
         scope.launch {
             var settle = 0
@@ -118,7 +120,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
         if (getSystemService(PowerManager::class.java)?.isInteractive == false) {
             // Screen off: nothing is visible, nothing to cover. Keep Instagram's state so waking
             // straight back into it is covered on the first poll.
-            hideOverlay(); return
+            hideOverlay(); island.hide(); return
         }
         val found = blockedWindow()
         val was = igVisible
@@ -247,22 +249,33 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     /** One place decides whether the overlay is up: Instagram visible and the gate closed. */
     private fun apply() {
-        if (!igVisible) { hideOverlay(); notifier.clear(); return }
+        if (!igVisible) { hideOverlay(); island.hide(); notifier.clear(); return }
         val gate = AppGraph.state.gateNow(cfg)
         announce(gate)
         if (gate !is Gate.Closed) { hideOverlay(); return }
         showOverlay(bounds, model(gate))
     }
 
-    /** Says where you are in the notification / island: which app, and when it locks. */
+    /** Says where you are: the island in the status bar, plus a quiet notification. No countdown. */
     private fun announce(g: Gate) {
         val app = BlockedApps.packages[blockedPkg] ?: "App"
-        val wall = System.currentTimeMillis()
         when (g) {
-            is Gate.Open -> notifier.show("In $app", "Claude is working · locks in", wall + g.remainingMs)
-            is Gate.Bypass -> notifier.show("In $app", "Bypass on · ends in", wall + g.remainingMs)
-            is Gate.Closed -> if (g.reason == ClosedReason.Checking) notifier.show("In $app", "Checking Claude…", null)
-                else notifier.show("$app locked", "Claude isn't working", null, chip = "Locked")
+            is Gate.Open -> {
+                island.show(app, "Claude working", StatusIsland.Tone.Working)
+                notifier.show("In $app", "Claude is working")
+            }
+            is Gate.Bypass -> {
+                island.show(app, "Bypass", StatusIsland.Tone.Waiting)
+                notifier.show("In $app", "Bypass is on")
+            }
+            is Gate.Closed -> if (g.reason == ClosedReason.Checking) {
+                island.show(app, "Checking", StatusIsland.Tone.Waiting)
+                notifier.show("In $app", "Checking Claude…")
+            } else {
+                // The lock screen says it all; no island on top of it.
+                island.hide()
+                notifier.show("$app locked", "Claude isn't working")
+            }
         }
     }
 
@@ -370,6 +383,7 @@ class BlockerService : AccessibilityService(), OverlayActions {
 
     override fun onDestroy() {
         hideOverlay()
+        island.hide()
         notifier.clear()
         unmuteMedia()
         screenReceiver?.let { runCatching { unregisterReceiver(it) } }
