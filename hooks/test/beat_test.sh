@@ -70,9 +70,33 @@ check "reason is a category" "$(lf reason)" permission
 check "no label unless opted in" "$(lf label)" -
 SCROLLLOCK_TASK_TEXT=1 hook '{"session_id":"n1","hook_event_name":"Notification","notification_type":"permission_prompt","message":"Claude needs your permission","cwd":"/work/my-project"}' >/dev/null; sleep 0.6
 check "opted in: project name as label" "$(lf label)" my-project
-before=$(wc -l <"$work/req.jsonl")
-hook '{"session_id":"n2","hook_event_name":"Notification","notification_type":"idle_prompt","message":"Claude is waiting for your input"}' >/dev/null; sleep 0.5
-check "idle nudge sends nothing" "$(grep -c 'n2' "$work/req.jsonl" | awk '{print ($1==0)?"yes":"no"}')" yes
+# Esc fires no Stop; what Claude leaves behind is an idle prompt, which must end the turn.
+hook '{"session_id":"n2","hook_event_name":"UserPromptSubmit","prompt":"go"}' >/dev/null; sleep 0.5
+hook '{"session_id":"n2","hook_event_name":"Notification","notification_type":"idle_prompt","message":"Claude is waiting for your input"}' >/dev/null; sleep 0.6
+check "idle prompt (what Esc leaves) is idle" "$(lf event)" idle
+sn() { grep -cF 'session_id\":\"'"$1"'\"' "$work/req.jsonl" 2>/dev/null || true; }
+check "session counter sees its events" "$([ "$(sn n2)" -ge 2 ] && echo yes || echo no)" yes
+b2=$(sn n2); sleep 3.5
+check "idle prompt stops the keep-alive loop" "$(sn n2)" "$b2"
+# Notices that are not the agent waiting on you must not lock the phone.
+for nt in auth_success quota_auto_resume_fired plugin_notification agent_completed elicitation_complete; do
+  c0=$(sn n4)
+  hook '{"session_id":"n4","hook_event_name":"Notification","notification_type":"'$nt'","message":"hi"}' >/dev/null; sleep 0.4
+  check "$nt sends nothing" "$(( $(sn n4) - c0 ))" 0
+done
+hook '{"session_id":"n5","hook_event_name":"Notification","notification_type":"elicitation_dialog","message":"Pick one"}' >/dev/null; sleep 0.6
+check "a question locks" "$(lf event)" needs_you
+check "question reason" "$(lf reason)" question
+# An API error ends the turn without Stop.
+hook '{"session_id":"e1","hook_event_name":"UserPromptSubmit","prompt":"go"}' >/dev/null; sleep 0.5
+hook '{"session_id":"e1","hook_event_name":"StopFailure","error":"rate_limit"}' >/dev/null; sleep 0.6
+check "StopFailure is idle" "$(lf event)" idle
+# A tool the user aborted ends the turn; an ordinary failed tool does not.
+hook '{"session_id":"e2","hook_event_name":"UserPromptSubmit","prompt":"go"}' >/dev/null; sleep 0.5
+hook '{"session_id":"e2","hook_event_name":"PostToolUseFailure","tool_name":"Bash","error":"Exit code 1","is_interrupt":false}' >/dev/null; sleep 0.6
+check "failed tool is tool_done" "$(lf event)" tool_done
+hook '{"session_id":"e2","hook_event_name":"PostToolUseFailure","tool_name":"Bash","error":"aborted","is_interrupt":true}' >/dev/null; sleep 0.6
+check "aborted tool is idle" "$(lf event)" idle
 TMPDIR="$work" SCROLLLOCK_URL="http://127.0.0.1:$port/" SCROLLLOCK_WRITE_TOKEN=tok sh "$work/hook" --agent codex <<<'{"session_id":"n3","hook_event_name":"PermissionRequest","tool_name":"Bash"}' >/dev/null; sleep 0.6
 check "Codex PermissionRequest is needs_you" "$(lf event)" needs_you
 [ "$fail" = 0 ] && echo "all passed" || { echo "SOME FAILED"; exit 1; }

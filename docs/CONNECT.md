@@ -94,7 +94,7 @@ Add `"agent": "my-agent"` to any event to name the session (letters, digits, spa
 - Send `working` or `beat` every few seconds while it's busy (best), or
 - Send `working` with a longer lease such as `"lease_ms": 60000` and an `idle` when it ends. A crash then stays unlocked until the lease runs out, at most a minute here.
 
-A turn that is interrupted (Escape, Ctrl-C) may fire no stop event. The shipped hook stops renewing after 2 minutes without activity (10 minutes while a tool is running) so that case locks on its own.
+A turn that is interrupted (Escape, Ctrl-C) fires no `Stop`. In Claude Code the shipped hook catches it from what Claude does next: the idle prompt notification, or a `PostToolUseFailure` with `is_interrupt` when you abort a running tool. Both send `idle`. An API error (`StopFailure`) does too. As a last resort the hook stops renewing after 5 minutes without activity while Claude's process is alive (30 minutes while a tool is running), or 2 and 10 minutes if it can't find the process; set `SCROLLLOCK_QUIET_S` to change the first number. If your own tool has an "interrupted" or "idle" signal, send `idle` on it.
 
 ### Tools with no hooks at all
 
