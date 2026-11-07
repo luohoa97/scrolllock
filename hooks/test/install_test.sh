@@ -12,12 +12,12 @@ count() { python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));print(sum(1
 
 # 1. Fresh install
 run >/dev/null
-check "fresh: seven events wired" "$(count)" 7
+check "fresh: nine events wired" "$(count)" 9
 check "fresh: hook is executable" "$(test -x "$work/bin/scrolllock-hook" && echo yes)" yes
 
 # 2. Running twice adds nothing
 out="$(run)"
-check "second run: still seven" "$(count)" 7
+check "second run: still nine" "$(count)" 9
 check "second run: says already installed" "$(printf '%s' "$out" | grep -c 'already installed')" 1
 
 # 3. Existing settings and hooks survive
@@ -28,7 +28,7 @@ JSON
 run >/dev/null
 check "merge: keeps other keys" "$(python3 -c 'import json;d=json.load(open("'"$work"'/settings.json"));print(d["model"],d["permissions"]["allow"][0])')" "opus Bash(ls)"
 check "merge: keeps my Stop hook" "$(python3 -c 'import json;d=json.load(open("'"$work"'/settings.json"));print(any(h["command"]=="echo mine" for g in d["hooks"]["Stop"] for h in g["hooks"]))')" True
-check "merge: adds ours" "$(count)" 7
+check "merge: adds ours" "$(count)" 9
 check "merge: backup written" "$(test -f "$work/settings.json.scrolllock.bak" && echo yes)" yes
 
 # 4. Invalid JSON is left alone
